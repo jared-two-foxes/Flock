@@ -13,3 +13,6 @@
 [submodule "Externals/freetype2"]
 	path = Externals/freetype2
 	url = git://git.savannah.gnu.org/freetype/freetype2.git
+[submodule "Externals/Nebulous"]
+	path = Externals/Nebulous
+	url = https://github.com/jared-two-foxes/Nebulous.git
