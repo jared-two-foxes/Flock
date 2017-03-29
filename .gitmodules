@@ -1,6 +1,3 @@
 [submodule "Externals/Nebulous"]
 	path = Externals/Nebulous
 	url = https://github.com/jared-two-foxes/Nebulous.git
-[submodule "Nebulous"]
-	path = Nebulous
-	url = https://github.com/jared-two-foxes/Nebulous.git
