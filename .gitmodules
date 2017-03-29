@@ -1,18 +1,6 @@
-[submodule "Externals/Lua"]
-	path = Externals/Lua
-	url = https://github.com/lua/lua
-[submodule "Externals/jsoncpp"]
-	path = Externals/jsoncpp
-	url = https://github.com/open-source-parsers/jsoncpp.git
-[submodule "Externals/boost"]
-	path = Externals/boost
-	url = https://github.com/boostorg/boost.git
-[submodule "Externals/Nebulae"]
-	path = Externals/Nebulae
-	url = https://github.com/jared-two-foxes/Nebulous.git
-[submodule "Externals/freetype2"]
-	path = Externals/freetype2
-	url = git://git.savannah.gnu.org/freetype/freetype2.git
 [submodule "Externals/Nebulous"]
 	path = Externals/Nebulous
+	url = https://github.com/jared-two-foxes/Nebulous.git
+[submodule "Nebulous"]
+	path = Nebulous
 	url = https://github.com/jared-two-foxes/Nebulous.git
