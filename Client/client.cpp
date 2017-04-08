@@ -59,6 +59,8 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nShowCm
     // Update display with stats.
     Console::SetCursorPosition( initial_console_info.dwCursorPosition );
 
+     
+
     std::cout << "--------------------------------------------------------" << std::endl;
     std::cout << "Frame Time: " << frame_time << std::endl;
     std::cout << "Entities: " << entities.size() << std::endl;

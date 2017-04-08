@@ -2,7 +2,7 @@
 --  squidish v0.0.1 build script
 --
 
-dependenciesRoot = '../../Dependencies'
+dependenciesRoot = '..'
 package.path = package.path .. ";" .. dependenciesRoot
 
 local utils  = require('Build.utils')
