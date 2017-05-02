@@ -12,18 +12,13 @@ newoption {
   description = "Add's to the solution the unit test projects.",
 }
 
-newoption {
-  trigger     = "install",
-  description = "Add's to the solution the unit test projects.",
-}
-
-
 
 -- Setup --------------------------------------------------------------------------------------------------------------------------------------------
 
+local workspaceName = "Flock"
+
 baseLocation     = path.getabsolute( "./" )
-solutionLocation = path.getabsolute( "Build/Flock" )
-projectLocation  = path.join( solutionLocation, "Projects" )
+solutionLocation = path.getabsolute( "Projects/" .. workspaceName )
 
 if ( false == os.isdir(solutionLocation) ) then
   os.mkdir( solutionLocation )
@@ -31,10 +26,9 @@ end
 
 
 
-
 -- Workspace ----------------------------------------------------------------------------------------------------------------------------------------
 
-workspace "Flock"
+workspace( workspaceName )
   configurations { "Debug", "Release" }
   architecture "x86_64"
   language "C++"
@@ -43,12 +37,12 @@ workspace "Flock"
   targetdir ( path.join(baseLocation, "Bin") )
 
   includedirs {
-    "./",
-    "./include"
+    "./Source",
+    "./Externals/include"
   }
 
   libdirs {
-    "./lib"
+    "./Externals/lib"
   }
 
   filter "configurations:Debug"
@@ -79,14 +73,14 @@ workspace "Flock"
 project "Common"  
   kind "StaticLib"
   language "C++"
-  location( projectLocation )
-  targetdir ( path.join(baseLocation, "Lib" ) )
+  location( solutionLocation )
+  targetdir ( path.join(solutionLocation, "Lib" ) )
 
   files {
-    "Common/**.h",
-    "Common/**.inl",
-    "Common/**.hpp",
-    "Common/**.cpp",
+    "Source/Common/**.h",
+    "Source/Common/**.inl",
+    "Source/Common/**.hpp",
+    "Source/Common/**.cpp",
   }
 
 
@@ -96,13 +90,13 @@ project "Common"
 project "Server"  
   kind "ConsoleApp"
   language "C++"
-  location( projectLocation )
+  location( solutionLocation )
 
   files {
-    "Server/**.h",
-    "Server/**.inl",
-    "Server/**.hpp",
-    "Server/**.cpp"
+    "Source/Server/**.h",
+    "Source/Server/**.inl",
+    "Source/Server/**.hpp",
+    "Source/Server/**.cpp"
   }
 
   links {
@@ -118,10 +112,10 @@ project "Server"
 project "ClientConsole"  
   kind "ConsoleApp"
   language "C++"
-  location( projectLocation )
+  location( solutionLocation )
 
   files {
-    "ClientConsole/**.cpp"
+    "Source/ClientConsole/**.cpp"
   }
 
   links {
@@ -137,12 +131,12 @@ project "ClientConsole"
 project "Client"  
   kind "WindowedApp"
   language "C++"
-  location( projectLocation )
+  location( solutionLocation )
 
   files {
-    "Client/**.h",
-    "Client/**.hpp",
-    "Client/**.cpp"
+    "Source/Client/**.h",
+    "Source/Client/**.hpp",
+    "Source/Client/**.cpp"
   }
 
   links {
