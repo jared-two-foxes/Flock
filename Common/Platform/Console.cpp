@@ -45,13 +45,13 @@ Console::Init()
  	g_handle = GetStdHandle( STD_OUTPUT_HANDLE );
   if( g_handle == INVALID_HANDLE_VALUE ) 
   {
-    ErrorExit( "Console::Init" );
+    ErrorExit( L"Console::Init" );
   }
 
   bool ret = GetConsoleCursorInfo( g_handle, &g_Cursor );
   if( !ret ) 
   {
-    ErrorExit( "Console::Init" );
+    ErrorExit( L"Console::Init" );
   }
 }
 
@@ -74,7 +74,7 @@ Console::SetCursorVisible( bool bVisible )
   bool bRet = SetConsoleCursorInfo( g_handle, &g_Cursor );
   if( !bRet ) 
   {
-    ErrorExit( "Console::SetCursorVisible" );
+    ErrorExit( L"Console::SetCursorVisible" );
   }
 }
 
@@ -84,7 +84,7 @@ Console::SetCursorPosition( COORD& coord )
   bool ret = SetConsoleCursorPosition( g_handle, coord );
   if( !ret ) 
   {
-    ErrorExit( "Console::SetCursorPosition" );
+    ErrorExit( L"Console::SetCursorPosition" );
   }
 }
 
@@ -94,7 +94,7 @@ Console::GetScreenBufferInfo( CONSOLE_SCREEN_BUFFER_INFO* pScreenBufferInfo )
   bool ret = GetConsoleScreenBufferInfo( g_handle, pScreenBufferInfo );
   if( !ret ) 
   {
-    ErrorExit( "Console::GetScreenBufferInfo" );
+    ErrorExit( L"Console::GetScreenBufferInfo" );
   }
 }
 
