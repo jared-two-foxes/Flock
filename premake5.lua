@@ -38,11 +38,11 @@ workspace( workspaceName )
 
   includedirs {
     "./Source",
-    "./Externals/include"
+    "./include"
   }
 
   libdirs {
-    "./Externals/lib"
+    "./lib"
   }
 
   filter "configurations:Debug"
