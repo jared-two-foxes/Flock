@@ -1,1 +1,7 @@
 Project/
+build/
+include/
+share/
+lib/
+Projects/
+_build/
