@@ -1,6 +1,6 @@
 
-inline box_t::box_t( const vector4_t& a, const vector4_t& b ) 
-  : min( a ), max( b )
+inline box_t::box_t( const vector4_t& c, const vector4_t& d ) 
+  : a( c ), b( d )
 {}
 
 //bool ContainsPoint( const box_t& box, const vector4_t& p );

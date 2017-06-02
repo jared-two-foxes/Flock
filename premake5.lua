@@ -7,6 +7,13 @@
   _ROOT_DIR = _SCRIPT_DIR
 
 
+newoption {
+   trigger     = "outdir",
+   value       = "path",
+   description = "Output directory for the compiled executable"
+}
+
+
 ---
 --  Load the workspace description file.
 ---
@@ -52,13 +59,19 @@
         -- If found assume that it was build with "Build" and link it appropriately.
         if library ~= nil then
           if library.includePath ~= nil then
-            includedirs { path.join( _ROOT_DIR, "_external", "include", library.includePath ) } 
+            includedirs { 
+              path.join( 
+                _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ),
+                "../..", "_external", "include", library.includePath 
+              )
+            } 
           elseif library.system == "boost" then
-            includedirs { path.join( _ROOT_DIR, "_external", "include", library.name .. "-" .. library.version ) } 
-          end
-
-          if library.libPath ~= nil then
-            includedirs { path.join( _ROOT_DIR, library.libPath ) } 
+            includedirs { 
+              path.join( 
+                _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ),
+                "../..", "_external", "include", library.name .. "-" .. library.version 
+              ) 
+            } 
           end
 
           -- Add the libraries.
@@ -83,7 +96,7 @@
               local threading = "mt"
               local runtime = "" --"s"
               local debug = "gd"
-              local version = "4_2_3"
+              local version = library.version
 
               libraryDebugName = boost_combine_components( 
                 library.name, toolset, threading, runtime .. debug,
@@ -118,6 +131,8 @@
   end
 
 
+
+
 --- 
 --  
 ---
@@ -131,7 +146,12 @@
     
     language "C++"
     
-    location( path.join( os.getcwd(), "_build", desc.name, details.name ) )
+    location( 
+      path.join( 
+        _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ), 
+        details.name 
+      ) 
+    )
     
     files {  
       path.join( details.path, "**.cpp" ), 
@@ -139,10 +159,24 @@
       path.join( details.path, "**.h" )
     }
     
+    print( path.join( os.getcwd(), details.includePath ) )
+
     includedirs {
-      details.path
+      details.path,
+      path.join( os.getcwd(), details.includePath ),
+      path.join( 
+        _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ), 
+        "../..", "_external", "include" 
+      )
     }
     
+    libdirs {
+      path.join( 
+        _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ), 
+        "../..", "_external", "lib" 
+      )
+    }
+
     if details.defines then
       for _, n in ipairs( details.defines ) do
         defines { n }
@@ -161,7 +195,7 @@
     configurations { "Debug", "Release" }
     architecture "x86_64"
     language "C++"
-    location( path.join( os.getcwd(), "_build", desc.name  ) )  
+    location( _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ) )  
     flags { "FloatFast" }
 
     defines {
@@ -170,12 +204,7 @@
     }
 
     includedirs {
-      "./",
-      "./_external/include"
-    }
-
-    libdirs {
-      "./_external/lib"
+      os.getcwd()
     }
 
     filter "configurations:Debug"
@@ -206,6 +235,7 @@
 ---
 
   for _, details in pairs( desc.libraries ) do
+    print( "Create Library " .. details.name )
     createProject( "StaticLib", details )
   end
 
@@ -215,5 +245,6 @@
 --  Create the application projects
 ---
   for _, details in pairs( desc.binaries ) do
+    print( "Create Application " .. details.name )
     createProject( "ConsoleApp", details )
   end

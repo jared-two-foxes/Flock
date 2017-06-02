@@ -22,10 +22,10 @@ void PrepareEntities( std::vector<entity_t >& entities, const box_t& zone )
   for ( entity_t& entity : entities )
   {
     entity.identifier = identifier++;
-    entity.position.x = RandFloat( zone.min.x, zone.max.x );
-    entity.position.y = RandFloat( zone.min.y, zone.max.y );
-    entity.position.z = RandFloat( zone.min.z, zone.max.z );
-    entity.position.w = RandFloat( zone.min.w, zone.max.w );;
+    entity.position.x = RandFloat( zone.a.x, zone.b.x );
+    entity.position.y = RandFloat( zone.a.y, zone.b.y );
+    entity.position.z = RandFloat( zone.a.z, zone.b.z );
+    entity.position.w = RandFloat( zone.a.w, zone.b.w );;
   }
 }
 
@@ -52,20 +52,20 @@ int main( int argc, char* argv[] )
 
 	// Prepare the active play area for the simulation
 	box_t zone;
-	zone.min = vector4_t( -100.0f, -100.0f, -100.0f, 0 );
-	zone.max = vector4_t(  100.0f,  100.0f,  100.0f, 0 );
+	zone.a = vector4_t( -100.0f, -100.0f, -100.0f, 0 );
+	zone.b = vector4_t(  100.0f,  100.0f,  100.0f, 0 );
 
   // Create our entities for simulation
 	std::vector<entity_t > entities( argc > 1 ? atoi( argv[1] ) : 256 );
 	PrepareEntities( entities, zone );
 
   plane_t planes[6];
-  planes[0] = plane_t( vector4_t( 1.0f, 0.0f, 0.0f, 0.0f ), zone.min.x ); // left;
-  planes[1] = plane_t( vector4_t( 0.0f, 1.0f, 0.0f, 0.0f ), zone.min.y ); // bottom;
-  planes[2] = plane_t( vector4_t( 0.0f, 0.0f, 1.0f, 0.0f ), zone.min.z ); // far;
-  planes[2] = plane_t( vector4_t( 1.0f, 0.0f, 0.0f, 0.0f ), zone.max.x ); // right;
-  planes[2] = plane_t( vector4_t( 0.0f, 1.0f, 0.0f, 0.0f ), zone.max.y ); // top;
-  planes[2] = plane_t( vector4_t( 0.0f, 0.0f, 1.0f, 0.0f ), zone.max.z ); // near;
+  planes[0] = plane_t( vector4_t( 1.0f, 0.0f, 0.0f, 0.0f ), zone.a.x ); // left;
+  planes[1] = plane_t( vector4_t( 0.0f, 1.0f, 0.0f, 0.0f ), zone.a.y ); // bottom;
+  planes[2] = plane_t( vector4_t( 0.0f, 0.0f, 1.0f, 0.0f ), zone.a.z ); // far;
+  planes[2] = plane_t( vector4_t( 1.0f, 0.0f, 0.0f, 0.0f ), zone.b.x ); // right;
+  planes[2] = plane_t( vector4_t( 0.0f, 1.0f, 0.0f, 0.0f ), zone.b.y ); // top;
+  planes[2] = plane_t( vector4_t( 0.0f, 0.0f, 1.0f, 0.0f ), zone.b.z ); // near;
 
 	// GO! Simulate and push everything to anyone listening as fast as possible!
 	while (1) 

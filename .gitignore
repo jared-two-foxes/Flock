@@ -1,7 +1,3 @@
-Project/
-build/
-include/
-share/
-lib/
-Projects/
 _build/
+_externals/
+_external/
