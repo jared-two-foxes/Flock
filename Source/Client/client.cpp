@@ -12,7 +12,8 @@
 #include "Common/Platform/StopWatch.hpp"
 
 
-int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nShowCmd )
+//int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nShowCmd )
+int main( char* argc, char* argv[] )
 {
   CONSOLE_SCREEN_BUFFER_INFO initial_console_info, final_console_info;
 

@@ -7,11 +7,11 @@
   _ROOT_DIR = _SCRIPT_DIR
 
 
-newoption {
-   trigger     = "outdir",
-   value       = "path",
-   description = "Output directory for the compiled executable"
-}
+  newoption {
+    trigger     = "outdir",
+    value       = "path",
+    description = "Output directory for the compiled executable"
+  }
 
 
 ---
@@ -20,6 +20,9 @@ newoption {
   local desc = require( 'workspace' )
   local user_libraries = require( 'libraries' )
 
+
+
+  local builder = {}
 
 --- 
 --  
@@ -44,100 +47,162 @@ newoption {
 --  
 ---
 
-  local function addLibrariesToCurrentProject( dependencies )
-    if dependencies then
-      for _, name in pairs( dependencies ) do
+  function builder.setupProject( prj, wksp )
 
-        -- Attempt to grab the named library from the global libraries list.
-        local library = nil
-        for id, libObj in pairs( user_libraries ) do
-          if name == id then
-            library = libObj
-          end
-        end
-
-        -- If found assume that it was build with "Build" and link it appropriately.
-        if library ~= nil then
-          if library.includePath ~= nil then
-            includedirs { 
-              path.join( 
-                _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ),
-                "../..", "_external", "include", library.includePath 
-              )
-            } 
-          elseif library.system == "boost" then
-            includedirs { 
-              path.join( 
-                _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ),
-                "../..", "_external", "include", library.name .. "-" .. library.version 
-              ) 
-            } 
-          end
-
-          -- Add the libraries.
-          if library.naming ~= nil and library.naming ~= "none" then     
-            local libraryDebugName = library.name
-            local libraryReleaseName = library.name
-
-            if library.naming == "standard" then
-              libraryDebugName = libraryDebugName .. "d.lib"
-              libraryReleaseName = libraryReleaseName .. ".lib"
-            elseif library.naming == "versioned" then
-              libraryDebugName = libraryDebugName .. library.version .. "d.lib"
-              libraryReleaseName = libraryReleaseName .. library.version .. ".lib"
-            elseif library.naming == "win32" then
-              libraryDebugName = libraryDebugName .. "32.lib"
-              libraryReleaseName = libraryReleaseName .. "32.lib"
-            elseif library.naming == "architecture" then
-              libraryDebugName = libraryDebugName .. "64.lib"
-              libraryReleaseName = libraryReleaseName .. "64.lib"
-            elseif library.naming == "boost" then
-              local toolset = "v141"
-              local threading = "mt"
-              local runtime = "" --"s"
-              local debug = "gd"
-              local version = library.version
-
-              libraryDebugName = boost_combine_components( 
-                library.name, toolset, threading, runtime .. debug,
-                version ) .. ".lib"
-
-              libraryReleaseName = boost_combine_components( 
-                library.name, toolset, threading, runtime,
-                version ) .. ".lib"
-            end
-            
-            filter 'configurations:Release'
-              links { libraryReleaseName } 
-            filter {}
-
-            filter 'configurations:Debug'
-              links { libraryDebugName } 
-            filter {} 
-          end
-        
-        -- Assume that the library is build as part of this project and attempt to link it that way.
-        else
-          library = desc.libraries[ name ]
-          links{ name }
-        end
-
-        -- Either way we will need to recurse if a library was found.
-        if library ~= nil then
-          addLibrariesToCurrentProject( library.dependencies )
-        end 
-      end
+    -- Link in include paths, if required.
+    if prj.includePath ~= nil then
+      includedirs { 
+        path.join( 
+          _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ),
+          "../..", "_external", "include", prj.includePath 
+        )
+      } 
+    elseif prj.system == "boost" then
+      includedirs { 
+        path.join( 
+          _OPTIONS["outdir"] or path.join( os.getcwd(), "_build", desc.name ),
+          "../..", "_external", "include", prj.name .. "-" .. prj.version 
+        ) 
+      } 
     end
+
+    -- Link the libraries.
+    if prj.naming ~= nil and prj.naming ~= "none" then     
+      local libraryDebugName = prj.name
+      local libraryReleaseName = prj.name
+
+      if wksp == nil
+         or wksp.libraries == nil
+         or ( wksp ~= nil and wksp.libraries ~= nil and wksp.libraries[ prj.name ] == nil ) then
+        if prj.naming == "standard" then
+          libraryDebugName = libraryDebugName .. "d.lib"
+          libraryReleaseName = libraryReleaseName .. ".lib"
+        elseif prj.naming == "versioned" then
+          libraryDebugName = libraryDebugName .. prj.version .. "d.lib"
+          libraryReleaseName = libraryReleaseName .. prj.version .. ".lib"
+        elseif prj.naming == "win32" then
+          libraryDebugName = libraryDebugName .. "32.lib"
+          libraryReleaseName = libraryReleaseName .. "32.lib"
+        elseif prj.naming == "architecture" then
+          libraryDebugName = libraryDebugName .. "64.lib"
+          libraryReleaseName = libraryReleaseName .. "64.lib"
+        elseif prj.naming == "boost" then
+          local toolset = "v141"
+          local threading = "mt"
+          local runtime = "" --"s"
+          local debug = "gd"
+          local version = prj.version
+
+          libraryDebugName = boost_combine_components( 
+            prj.name, toolset, threading, runtime .. debug,
+            version ) .. ".lib"
+
+          libraryReleaseName = boost_combine_components( 
+            prj.name, toolset, threading, runtime,
+            version ) .. ".lib"
+        end
+      end
+
+      filter 'configurations:Release'
+        links { libraryReleaseName } 
+      filter {}
+
+      filter 'configurations:Debug'
+        links { libraryDebugName } 
+      filter {} 
+    end
+
+    -- include any specific libraries from this project.
+    builder.setupDependencies( prj.dependencies, wksp )    
   end
-
-
 
 
 --- 
 --  
 ---
 
-  local function createProject( t, details )
+  function builder.setupFramework( frameworkName, wksp )
+
+    -- Check if there is a framework specified for this dependency
+    local libraryName = frameworkName
+    local parts = string.explode( frameworkName, ":" )
+    if table.getn( parts ) > 1 then
+      frameworkName = parts[1]
+      libraryName = parts[2] -- could use better processing here for sure,
+    end
+
+    -- Attempt to grab the named framework from the global libraries list.
+    local framework = nil
+    for id, obj in pairs( user_libraries ) do
+      if frameworkName == id then
+        framework = obj
+      end
+    end
+
+    -- Check if the requested framework is actually a project from this workspace
+    if desc.libraries[ frameworkName ] ~= nil then
+      framework = desc.libraries[ frameworkName ]
+      builder.setupProject( desc.libraries[ frameworkName ], desc )
+
+    -- Still unable to find the requested framework, it could be a project from the most recent 
+    -- included workspace/framework.
+    elseif wksp ~= nil and wksp.libraries ~= nil and wksp.libraries[ frameworkName ] ~= nil then
+      builder.setupProject( wksp.libraries[ frameworkName ], wksp )
+      --framework = wksp
+
+    -- Else maybe it's a global project.
+    elseif framework ~= nil then
+      -- Check if there is a workspace file at the 'path' location which may hold more project 
+      -- information
+      if framework.path and os.isfile( path.join( framework.path, path.appendExtension( "workspace", ".lua" ) ) ) then
+        local wksp = require( path.join( framework.path, "workspace" ) )
+        framework = table.merge( framework, wksp )
+      end
+
+      -- Check for libraries in the framework to be included.
+      if framework.libraries ~= nil then
+        -- if no library name is specified then include all libraries else only include the specified
+        -- library.
+        for _, lib in pairs( framework.libraries ) do 
+          if table.getn( parts ) == 1 or lib.name == libraryName then
+            builder.setupProject( lib, framework )
+          end
+        end
+
+      -- if there are no libraries registered then attempt to include the framework as if it was a 
+      -- library
+      else
+        builder.setupProject( framework, nil )
+
+      end
+
+    -- Unable to find the requested framework anywhere, log error message and continue.
+    else
+      premake.error( "Unable to find requested library, %s", frameworkName )
+
+    end
+
+  end
+
+
+--- 
+--  
+---
+
+  function builder.setupDependencies( dependencies, wksp )
+    if dependencies then
+      for _, name in pairs( dependencies ) do
+        builder.setupFramework( name, wksp )
+      end
+    end
+  end
+
+
+--- 
+--  
+---
+
+  function builder.createProject( t, details )
     project( details.name )
     
     kind( t )
@@ -158,8 +223,6 @@ newoption {
       path.join( details.path, "**.hpp" ),
       path.join( details.path, "**.h" )
     }
-    
-    print( path.join( os.getcwd(), details.includePath ) )
 
     includedirs {
       details.path,
@@ -183,8 +246,11 @@ newoption {
       end
     end
 
-    addLibrariesToCurrentProject( details.dependencies );
+    builder.setupDependencies( details.dependencies );
   end
+
+
+
 
 
 --- 
@@ -235,8 +301,7 @@ newoption {
 ---
 
   for _, details in pairs( desc.libraries ) do
-    print( "Create Library " .. details.name )
-    createProject( "StaticLib", details )
+    builder.createProject( "StaticLib", details )
   end
 
 
@@ -245,6 +310,5 @@ newoption {
 --  Create the application projects
 ---
   for _, details in pairs( desc.binaries ) do
-    print( "Create Application " .. details.name )
-    createProject( "ConsoleApp", details )
+    builder.createProject( "ConsoleApp", details )
   end
