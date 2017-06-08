@@ -4,7 +4,7 @@
 struct plane_t
 {
 public:
-  vector4_t p; // (x,yz) represent a normal, & w-component represents the distance along normal to origin.
+  vector4_t n; // (x,y,z) represent a normal, & w-component represents the distance along normal to origin.
 
   public:
     plane_t() {}

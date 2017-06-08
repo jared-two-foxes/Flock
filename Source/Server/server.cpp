@@ -25,7 +25,8 @@ void PrepareEntities( std::vector<entity_t >& entities, const box_t& zone )
     entity.position.x = RandFloat( zone.a.x, zone.b.x );
     entity.position.y = RandFloat( zone.a.y, zone.b.y );
     entity.position.z = RandFloat( zone.a.z, zone.b.z );
-    entity.position.w = RandFloat( zone.a.w, zone.b.w );;
+    entity.position.w = RandFloat( zone.a.w, zone.b.w );
+    entity.speed = 2.5f;
   }
 }
 
@@ -60,12 +61,12 @@ int main( int argc, char* argv[] )
 	PrepareEntities( entities, zone );
 
   plane_t planes[6];
-  planes[0] = plane_t( vector4_t( 1.0f, 0.0f, 0.0f, 0.0f ), zone.a.x ); // left;
-  planes[1] = plane_t( vector4_t( 0.0f, 1.0f, 0.0f, 0.0f ), zone.a.y ); // bottom;
-  planes[2] = plane_t( vector4_t( 0.0f, 0.0f, 1.0f, 0.0f ), zone.a.z ); // far;
-  planes[2] = plane_t( vector4_t( 1.0f, 0.0f, 0.0f, 0.0f ), zone.b.x ); // right;
-  planes[2] = plane_t( vector4_t( 0.0f, 1.0f, 0.0f, 0.0f ), zone.b.y ); // top;
-  planes[2] = plane_t( vector4_t( 0.0f, 0.0f, 1.0f, 0.0f ), zone.b.z ); // near;
+  planes[0] = plane_t( vector4_t( 1.0f, 0.0f, 0.0f, 0.0f ), - zone.a.x ); // left;
+  planes[1] = plane_t( vector4_t( 0.0f, 1.0f, 0.0f, 0.0f ), - zone.a.y ); // bottom;
+  planes[2] = plane_t( vector4_t( 0.0f, 0.0f, 1.0f, 0.0f ), - zone.a.z ); // far;
+  planes[3] = plane_t( vector4_t( - 1.0f, 0.0f, 0.0f, 0.0f ), zone.b.x ); // right;
+  planes[4] = plane_t( vector4_t( 0.0f, - 1.0f, 0.0f, 0.0f ), zone.b.y ); // top;
+  planes[5] = plane_t( vector4_t( 0.0f, 0.0f, - 1.0f, 0.0f ), zone.b.z ); // near;
 
 	// GO! Simulate and push everything to anyone listening as fast as possible!
 	while (1) 
@@ -77,7 +78,7 @@ int main( int argc, char* argv[] )
 		for( entity_t& entity : entities ) 
 		{
 			Attraction( entity, entities );
-			Seperation( entity, entities ); 
+			//Seperation( entity, entities ); 
 			//@todo apply a cohesion force
 		}
 
@@ -87,15 +88,11 @@ int main( int argc, char* argv[] )
       // Check this entity's proximity to each "wall" of the cage
       for( int i = 0; i < 6; ++i ) 
       {
-        const float PROXIMITY_THRESHOLD = 1.0f;
-
         float distance = Distance( planes[i], entity.position );
-        if( distance < PROXIMITY_THRESHOLD )
+        if( distance < 0 )
         {
-          // Try to push the entity away from the wall.  Note that if the accumlated force  
-          // moving the entity towards the wall is greater than the amount we try to move him away
-          // it's going to simply keep moving in this direction.
-          entity.position = entity.position + planes[i].getNormal() * entity.speed; 
+          // Dont let the entities escape from the tank.
+          entity.position = entity.position - planes[i].getNormal() * distance;
         }
       }
     }

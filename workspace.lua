@@ -5,19 +5,18 @@ local workspace = {}
 workspace.name = 'Flock'
 workspace.system = "premake5"
 
-workspace.libraries = {
+workspace.projects = {
 	common = {
 	    name = 'common',
+	    type = "StaticLib",
 	    path = 'C:/Develop/Flock/Source/Common',      
 	    includePath = 'C:/Develop/Flock/Source',
 	    system = 'premake5',
 	    naming = "standard",
-	}
-}
-
-workspace.binaries = {
+	},
 	server = {
 	    name = 'server',
+	    type = "ConsoleApp",
 	    path = 'C:/Develop/Flock/Source/Server',     
 	    includePath = 'C:/Develop/Flock/Source', 
 	    system = 'premake5',
@@ -26,6 +25,7 @@ workspace.binaries = {
 	},
 	client_console = {
 	    name = 'client_console',
+	    type = "ConsoleApp",
 	    path = 'C:/Develop/Flock/Source/ClientConsole',      
 	    includePath = 'C:/Develop/Flock/Source',
 	    system = 'premake5',
@@ -34,10 +34,11 @@ workspace.binaries = {
 	},
 	client = {
 	    name = 'client',
+	    type = "WindowedApp",
 	    path = 'C:/Develop/Flock/Source/Client',      
 	    includePath = 'C:/Develop/Flock/Source',
 	    system = 'premake5',
-	    dependencies = { 'common', 'cppzmq', 'NebulaeEngine:nebulous_alpha' },
+	    dependencies = { 'common', 'cppzmq', 'NebulaeEngine:nebulous_beta', 'NebulaeEngine:nebulous_gl3' },
 	    naming = "standard",
 	}	
 }

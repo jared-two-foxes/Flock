@@ -66,43 +66,41 @@
       } 
     end
 
-    -- Link the libraries.
+    -- Link the libraries
     if prj.naming ~= nil and prj.naming ~= "none" then     
       local libraryDebugName = prj.name
       local libraryReleaseName = prj.name
 
-      if wksp == nil
-         or wksp.libraries == nil
-         or ( wksp ~= nil and wksp.libraries ~= nil and wksp.libraries[ prj.name ] == nil ) then
-        if prj.naming == "standard" then
-          libraryDebugName = libraryDebugName .. "d.lib"
-          libraryReleaseName = libraryReleaseName .. ".lib"
-        elseif prj.naming == "versioned" then
-          libraryDebugName = libraryDebugName .. prj.version .. "d.lib"
-          libraryReleaseName = libraryReleaseName .. prj.version .. ".lib"
-        elseif prj.naming == "win32" then
-          libraryDebugName = libraryDebugName .. "32.lib"
-          libraryReleaseName = libraryReleaseName .. "32.lib"
-        elseif prj.naming == "architecture" then
-          libraryDebugName = libraryDebugName .. "64.lib"
-          libraryReleaseName = libraryReleaseName .. "64.lib"
-        elseif prj.naming == "boost" then
-          local toolset = "v141"
-          local threading = "mt"
-          local runtime = "" --"s"
-          local debug = "gd"
-          local version = prj.version
+      if wksp == desc then
+        -- do nothing!  We want to link based on the project name without any qualitification
+      elseif prj.naming == "standard" then
+        libraryDebugName = libraryDebugName .. "d.lib"
+        libraryReleaseName = libraryReleaseName .. ".lib"  
+      elseif prj.naming == "versioned" then
+        libraryDebugName = libraryDebugName .. prj.version .. "d.lib"
+        libraryReleaseName = libraryReleaseName .. prj.version .. ".lib"
+      elseif prj.naming == "win32" then
+        libraryDebugName = libraryDebugName .. "32.lib"
+        libraryReleaseName = libraryReleaseName .. "32.lib"
+      elseif prj.naming == "architecture" then
+        libraryDebugName = libraryDebugName .. "64.lib"
+        libraryReleaseName = libraryReleaseName .. "64.lib"
+      elseif prj.naming == "boost" then
+        local toolset = "v141"
+        local threading = "mt"
+        local runtime = "" --"s"
+        local debug = "gd"
+        local version = prj.version
 
-          libraryDebugName = boost_combine_components( 
-            prj.name, toolset, threading, runtime .. debug,
-            version ) .. ".lib"
+        libraryDebugName = boost_combine_components( 
+          prj.name, toolset, threading, runtime .. debug,
+          version ) .. ".lib"
 
-          libraryReleaseName = boost_combine_components( 
-            prj.name, toolset, threading, runtime,
-            version ) .. ".lib"
-        end
+        libraryReleaseName = boost_combine_components( 
+          prj.name, toolset, threading, runtime,
+          version ) .. ".lib"
       end
-
+  
       filter 'configurations:Release'
         links { libraryReleaseName } 
       filter {}
@@ -140,14 +138,14 @@
     end
 
     -- Check if the requested framework is actually a project from this workspace
-    if desc.libraries[ frameworkName ] ~= nil then
-      framework = desc.libraries[ frameworkName ]
-      builder.setupProject( desc.libraries[ frameworkName ], desc )
+    if desc.projects[ frameworkName ] ~= nil then
+      framework = desc.projects[ frameworkName ]
+      builder.setupProject( desc.projects[ frameworkName ], desc )
 
     -- Still unable to find the requested framework, it could be a project from the most recent 
     -- included workspace/framework.
-    elseif wksp ~= nil and wksp.libraries ~= nil and wksp.libraries[ frameworkName ] ~= nil then
-      builder.setupProject( wksp.libraries[ frameworkName ], wksp )
+    elseif wksp ~= nil and wksp.projects ~= nil and wksp.projects[ frameworkName ] ~= nil then
+      builder.setupProject( wksp.projects[ frameworkName ], wksp )
       --framework = wksp
 
     -- Else maybe it's a global project.
@@ -160,12 +158,14 @@
       end
 
       -- Check for libraries in the framework to be included.
-      if framework.libraries ~= nil then
+      if framework.projects ~= nil then
         -- if no library name is specified then include all libraries else only include the specified
         -- library.
-        for _, lib in pairs( framework.libraries ) do 
+        for _, lib in pairs( framework.projects ) do 
           if table.getn( parts ) == 1 or lib.name == libraryName then
-            builder.setupProject( lib, framework )
+            if lib.type == "StaticLib" then
+              builder.setupProject( lib, framework )
+            end
           end
         end
 
@@ -202,10 +202,14 @@
 --  
 ---
 
-  function builder.createProject( t, details )
+  function builder.createProject( details )
     project( details.name )
     
-    kind( t )
+    kind( details.type )
+    
+    if details.type == "WindowedApp" then
+      flags( "WinMain" )
+    end
     
     architecture "x86_64"
     
@@ -300,15 +304,6 @@
 --  Create the libraries projects based upon the description file.
 ---
 
-  for _, details in pairs( desc.libraries ) do
-    builder.createProject( "StaticLib", details )
-  end
-
-
-
---- 
---  Create the application projects
----
-  for _, details in pairs( desc.binaries ) do
-    builder.createProject( "ConsoleApp", details )
+  for _, details in pairs( desc.projects ) do
+    builder.createProject( details )
   end
