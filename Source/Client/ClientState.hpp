@@ -1,5 +1,5 @@
-#ifndef __NEBULAE_GUISAMPLESTATE_H__
-#define __NEBULAE_GUISAMPLESTATE_H__
+#ifndef __FLOCK_CLIENTSTATE_H__
+#define __FLOCK_CLIENTSTATE_H__
 
 
 #include "Common/Entity/Entity.hpp"
@@ -15,11 +15,15 @@ namespace Nebulae {
   class RenderSystem;
 }
 
+class ClientInputListener;
 
 /** ClientState.
  */
 class ClientState : public Nebulae::State
 {
+public:
+  friend class ClientInputListener;
+
 public:
   typedef std::shared_ptr<Nebulae::RenderSystem > RenderSystemPtr;
   typedef std::shared_ptr<Nebulae::Camera >       CameraPtr;
@@ -28,30 +32,41 @@ private:
   RenderSystemPtr m_pRenderSystem; ///< The rendering system.
   CameraPtr       m_pCamera;       ///< The camera for scene.
 
+  std::unique_ptr<ClientInputListener > m_pInputListener;
+
   std::vector<entity_t > entities;
 
   std::unique_ptr<zmq::context_t > context;
   std::unique_ptr<zmq::socket_t >  subscriber;
+  std::unique_ptr<zmq::socket_t >  requestSocket;
 
-  public:
-    /** \name Structors */ ///@{
-    ClientState();
-    virtual ~ClientState();
-    //@}
-    
-    /** \name Mutators */ ///@{
-    virtual void Enter( Nebulae::StateStack* caller );
-    virtual void Exit( Nebulae::StateStack* caller );
-    virtual void Update( float fDeltaTimeStep, Nebulae::StateStack* pCaller );
-    virtual void Render() const;
-     //@}
+public:
+  /** \name Structors */ ///@{
+  ClientState();
+  virtual ~ClientState();
+  //@}
 
-    /** \name Accessors */ ///@{
-    CameraPtr         GetCamera() const         { return m_pCamera; }
-    RenderSystemPtr   GetRenderSystem() const   { return m_pRenderSystem; }
-    //@}
+  /** \name Mutators */ ///@{
+  virtual void Enter( Nebulae::StateStack* caller );
+  virtual void Exit( Nebulae::StateStack* caller );
+  virtual void Update( float fDeltaTimeStep, Nebulae::StateStack* pCaller );
+  virtual void Render() const;
+   //@}
+
+  /** \name Accessors */ ///@{
+  CameraPtr         GetCamera() const {
+    return m_pCamera;
+  }
+  RenderSystemPtr   GetRenderSystem() const {
+    return m_pRenderSystem;
+  }
+//@}
+
+private:
+  Nebulae::KeyCode pressedKey;
+  void OnKeyUp( Nebulae::KeyCode keyCode );
 
 }; //ClientState
 
 
-#endif // __NEBULAE_GUISAMPLESTATE_H__
+#endif // __FLOCK_CLIENTSTATE_H__

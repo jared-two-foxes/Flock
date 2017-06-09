@@ -7,8 +7,10 @@ struct entity_t
 {
 	int       identifier;
   float     speed;
-	vector4_t position;
-	//vector4_t rotation; //< quaternion	
+	vector2_t position;
+  vector2_t direction;
+  vector4_t colour;
+  int       player;
 };
 
 #endif // ENTITY_H__
