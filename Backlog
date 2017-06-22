@@ -1,0 +1,36 @@
+Flock
+
+# Active {Server}
+  [] 
+
+# Backlog
+
+## Server
+  [] Entities need to have a radius.
+  [] Mulitplayer connection support.
+  	[] Inbound client messages need to be tagged with the player id.
+  [] Support multi directional movement, allow for vertical and horizontal movement at the same time
+  [] Have enemy entities move towards the closest player
+  [] If an enemy intersects with a player that player "dies"
+  [] Last surviving player wins.
+  
+## Client
+  [] Enemy entities need to show their radius
+  [] Change the background to something more appealing
+  [] Other players should appear as differently to this player
+  [] Player needs to have a better representation to indicate facing
+  [] Simulate game state on client based upon current information inbetween server updates.
+  [] Implemented ThreadedSocket which continuously polls and stores the most current message that its recieved only and returns that via a recv function.
+
+## UnitTests
+  [] 
+
+## Dreams & Further Projects
+  [] Implement player "attack nodes"
+  [] Implement scoring mechanic per player
+  [] Implement a spectator mode.
+  [] Implement player attacks damaging other players
+
+# Complete
+
+## {Date}

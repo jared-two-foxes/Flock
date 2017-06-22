@@ -1,187 +1,154 @@
-//
-//  Weather update server in C++
-//  Binds PUB socket to tcp://*:5556
-//  Publishes random weather updates
-//
-#include <zmq.hpp>
-#include <stdio.h>
-#include <stdlib.h>
+
+#include "Server.hpp"
+
+#include <Common/Platform/Console.hpp>
+
+
 #include <iostream>  // was included in <zhelpers.hpp> 
 #include <sstream>
 
-#include <Common/Math/Math.hpp>
-#include <Common/Entity/Entity.hpp>
-#include <Common/Platform/Console.hpp>
-#include <Common/Platform/StopWatch.hpp>
+using namespace std::chrono;
 
-#include <Server/Flocking.hpp>
+std::chrono::high_resolution_clock::time_point _last, _open, _next;
+float _frame_time;
+CONSOLE_SCREEN_BUFFER_INFO _initial_console_info, _final_console_info;
+
+std::chrono::milliseconds PUBLISH_FREQUENCY = 30ms;
+
+Server::Server( Model* model, GameController* controller ) :
+  m_context( std::make_unique<zmq::context_t >( 1 ) ),
+  m_publisher( std::make_unique<zmq::socket_t >( *m_context, ZMQ_PUB ) ),
+  m_listener( std::make_unique<zmq::socket_t >( *m_context, ZMQ_REP ) ),
+  m_model( model ),
+  m_controller( controller )
+{}
 
 
-void PrepareEntities( std::vector<entity_t >& entities, const vector4_t& colour, const rect_t& zone )
+Server::~Server()
 {
-  int identifier = 0;
-  for ( entity_t& entity : entities )
-  {
-    entity.identifier = identifier++;
-    entity.position.x = RandFloat( zone.a.x, zone.b.x );
-    entity.position.y = RandFloat( zone.a.y, zone.b.y );
-    entity.colour = colour;
-    entity.speed = 1.0f;
-    entity.player = 0;
-  }
+  // This COMPLETELY fucks with unittest output!
+  //Console::SetCursorVisible( true );
+  //Console::SetCursorPosition( _final_console_info.dwCursorPosition );
+}
+
+void
+Server::Init( const char* publisherEndPoint, const char* listenerEndPoint )
+{
+  Console::Init();
+  Console::SetCursorVisible( false );
+  Console::GetScreenBufferInfo( &_initial_console_info );
+
+  m_publisher->bind( publisherEndPoint );
+  m_listener->bind( listenerEndPoint );
+
+  // Set the subscriber socket to only keep the most recent message, dont care about any other messages.
+  int conflate = 1;
+  m_publisher->setsockopt( ZMQ_CONFLATE, &conflate, sizeof( conflate ) );
+
+  _open = _last = high_resolution_clock::now();
+  _next = _open;
 }
 
 
-int main( int argc, char* argv[] )
+void
+Server::PrintToConsole()
 {
-  CONSOLE_SCREEN_BUFFER_INFO initial_console_info, final_console_info;
+  Console::SetCursorPosition( _initial_console_info.dwCursorPosition );
 
-  srand( time( NULL ) );
-  StopWatch frameTimer;
+  std::cout << "--------------------------------------------------------" << std::endl;
+  std::cout << "Frame Time  (ms): " << _frame_time * 1000.0f << std::endl;
+  std::cout << "Uptime (s): " << duration<float >( high_resolution_clock::now() - _open ).count() << std::endl;
+  //std::cout << "Players: " << players.size() << std::endl;
+  std::cout << "Entities: " << m_model->Entities().size() << std::endl;
+  std::cout << "Timestamp: " << _last.time_since_epoch().count() << std::endl;
 
-  // Prepare the console.
-  Console::Init();
-  Console::SetCursorVisible( false );
-  Console::GetScreenBufferInfo( &initial_console_info );
+  //Console::GetScreenBufferInfo( &_final_console_info );
+}
 
-  // Prepare our context and publisher
-  zmq::context_t context( 1 );
-  zmq::socket_t  publisher( context, ZMQ_PUB );
-  publisher.bind( "tcp://*:5556" );
-#if !defined( WIN32 )
-  publisher.bind( "ipc://weather.ipc" ); // Not usable on windows.
-#endif
-  zmq::socket_t  replySocket( context, ZMQ_REP );
-  replySocket.bind( "tcp://*:5555" );
 
-  // Prepare the active play area for the simulation
-  rect_t zone;
-  zone.a = vector2_t( -100.0f, -100.0f );
-  zone.b = vector2_t( 100.0f, 100.0f );
+void
+Server::Update()
+{
+  // Determine elapsed time since last iteration.
+  auto now = high_resolution_clock::now();
+  duration<float > duration = ( now - _last );
+  _frame_time = duration.count();
 
-  std::vector<entity_t* > players;
+  // Update the game state.
+  m_controller->Update( _frame_time );
 
-  // Create our entities for simulation
-  std::vector<entity_t > entities( argc > 1 ? atoi( argv[ 1 ] ) : 256 );
-  PrepareEntities( entities, vector4_t( 1.0f, .0f, .0f, 1.0f ), zone );
 
-  // GO! Simulate and push everything to anyone listening as fast as possible!
-  while ( 1 )
+  // Check for anu Client messages.
+  zmq::message_t request;
+  if ( m_listener->recv( &request, ZMQ_NOBLOCK ) )
   {
-    // Start timer
-    frameTimer.Start();
+    zmq::message_t reply( 32 );
+    ProcessClientMessage( request, &reply );
 
-    // Update flocking simulation
-    for ( entity_t& entity : entities )
-    {
-      if ( entity.player == 0 ) // IsPlayer
-      {
-        for ( entity_t* player : players )
-        {
-          Attraction( entity, *player );
-        }
-      }
-    }
-
-    //@todo Check that none of the entities are moving outside of the box.
-    //for( entity_t& entity : entities ) 
-    //{
-    //  // Check this entity's proximity to each "wall" of the cage
-    //  for( int i = 0; i < 6; ++i ) 
-    //  {
-    //    float distance = Distance( planes[i], entity.position );
-    //    if( distance < 0 )
-    //    {
-    //      // Dont let the entities escape from the tank.
-    //      entity.position = entity.position - planes[i].getNormal() * distance;
-    //    }
-    //  }
-    //}
-
-    // Push all the entities out to anyone listening.
-    {
-      std::size_t list_size = entities.size();
-      zmq::message_t message( list_size * sizeof( entity_t ) + sizeof( int ) );
-      char* ptr = ( char* ) message.data();
-      memcpy( ptr, &list_size, sizeof( int ) );
-      memcpy( ptr + sizeof( int ), &entities[ 0 ], list_size * sizeof( entity_t ) );
-      publisher.send( message );
-    }
-
-    // Check for any client messages to process.
-    {
-      zmq::message_t request;
-
-      //  Wait for next request from client
-      if ( replySocket.recv( &request, ZMQ_NOBLOCK ) )
-      {
-        //  Do some 'work'
-        std::istringstream iss( static_cast< char* >( request.data() ) );
-
-        if ( iss.str() == "new" )
-        {
-          // Create a new player entity.
-          entities.push_back( entity_t() );
-          entity_t& player = entities.back();
-          player.identifier = entities.size() - 1;
-          player.position = vector2_t( 0, 0 );
-          player.direction = vector2_t( 0, 0 );
-          player.speed = 1.0f;
-          player.colour = vector4_t( 0, 1.0f, 0, 1.0f );
-          player.player = 1;
-
-          players.push_back( &player );
-
-          // Send reply back to client of the id that this player will be.
-          zmq::message_t reply( 8 );
-          snprintf( ( char * ) reply.data(), 8,
-            "%05d", player.identifier );
-          replySocket.send( reply );
-        }
-        else
-        {
-          // Extract the command & identifier.
-          int identifier;
-          std::string command;
-          iss >> identifier >> command;
-
-          // Find the entity.
-          entity_t& e = entities[ identifier ];
-          if ( command == "left" )
-            e.position.x -= e.speed;
-          else if ( command == "right" )
-            e.position.x += e.speed;
-          else if ( command == "up" )
-            e.position.y += e.speed;
-          else if ( command == "down" )
-            e.position.y -= e.speed;
-
-          // Send reply back to client
-          zmq::message_t reply( 20 );
-          memcpy( reply.data(), "OK", 2 );
-          replySocket.send( reply );
-        }
-      }
-    }
-
-    // End timer.
-    float frame_time = frameTimer.Stop();
-
-    // Update display with stats.
-    {
-      Console::SetCursorPosition( initial_console_info.dwCursorPosition );
-
-      std::cout << "--------------------------------------------------------" << std::endl;
-      std::cout << "Frame Time: " << frame_time << std::endl;
-      std::cout << "Players: " << players.size() << std::endl;
-      std::cout << "Entities: " << entities.size() << std::endl;
-
-      Console::GetScreenBufferInfo( &final_console_info );
-    }
+    m_listener->send( reply );
   }
 
-  Console::SetCursorVisible( true );
-  Console::SetCursorPosition( final_console_info.dwCursorPosition );
+  // Push the current state out to all of the subscribers
+  if( now >= _next )
+  {
+    long long nanoseconds_since_epoch = now.time_since_epoch().count();
 
-  return 0;
+    std::size_t list_size = m_model->Entities().size();
+    zmq::message_t message( sizeof( long long ) + sizeof( int ) + list_size * sizeof( entity_t ) );
+    char* ptr = ( char* ) message.data();
+    memcpy( ptr, &nanoseconds_since_epoch, sizeof( long long ) );
+    memcpy( ptr + sizeof( long long ), &list_size, sizeof( int ) );
+    memcpy( ptr + sizeof( long long ) + sizeof( int ), &m_model->Entities()[ 0 ], list_size * sizeof( entity_t ) );
+    m_publisher->send( message, ZMQ_NOBLOCK );
+
+    _next += PUBLISH_FREQUENCY;
+  }
+
+  _last = now;
+}
+
+void
+Server::ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply )
+{
+  // //  Do some 'work'
+  std::istringstream iss( static_cast< char* >( request.data() ) );
+
+  if ( iss.str() == "new" )
+  {
+    // Create a new player entity.
+    entity_t* player = m_controller->AddPlayer();
+
+    // Send reply back to client of the id that this player will be.
+    snprintf( ( char * ) reply->data(), 6,
+      "%05d", player->identifier );
+  }
+  else
+  {
+    // Extract the command & identifier.
+    int identifier;
+    std::string command;
+    iss >> identifier >> command;
+
+    // Find the entity.
+    entity_t* e = m_model->Get( identifier );
+    if ( e )
+    {
+      if ( command == "left" )
+        e->position.x -= e->speed;
+      else if ( command == "right" )
+        e->position.x += e->speed;
+      else if ( command == "up" )
+        e->position.y += e->speed;
+      else if ( command == "down" )
+        e->position.y -= e->speed;
+
+      // Send reply back to client
+      memcpy( ( char * ) reply->data(), "OK", 3 );
+    }
+    else
+    {
+      // Send reply back to client
+      memcpy( ( char * ) reply->data(), "INVALID_ID", 11 );
+    }
+  }
 }

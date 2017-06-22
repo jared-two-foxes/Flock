@@ -273,6 +273,12 @@
       "NEBULAE_INCLUDES_PNG"
     }
 
+    if desc.includePath then
+      includedirs {
+        desc.includePath
+      }
+    end
+
     includedirs {
       os.getcwd()
     }

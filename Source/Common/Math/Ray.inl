@@ -4,7 +4,7 @@ inline std::pair<bool, float > Intersects( const ray_t& ray, const plane_t& plan
   float denom = Dot3( plane.n, ray.direction ); 
   if ( fabs( denom ) < std::numeric_limits<float >::epsilon() )
   {
-    return std::pair<bool, float >( false, 0 );
+    return std::pair<bool, float >( false, 0.0f );
   }
   else
   {

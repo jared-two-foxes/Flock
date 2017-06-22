@@ -37,8 +37,9 @@ private:
   std::vector<entity_t > entities;
 
   std::unique_ptr<zmq::context_t > context;
-  std::unique_ptr<zmq::socket_t >  subscriber;
-  std::unique_ptr<zmq::socket_t >  requestSocket;
+  std::unique_ptr<zmq::socket_t >  localSocket;
+  std::unique_ptr<zmq::socket_t >  serverSocket;
+  long long m_lag;
 
 public:
   /** \name Structors */ ///@{
@@ -51,13 +52,13 @@ public:
   virtual void Exit( Nebulae::StateStack* caller );
   virtual void Update( float fDeltaTimeStep, Nebulae::StateStack* pCaller );
   virtual void Render() const;
-   //@}
+  //@}
 
   /** \name Accessors */ ///@{
-  CameraPtr         GetCamera() const {
+  CameraPtr GetCamera() const {
     return m_pCamera;
   }
-  RenderSystemPtr   GetRenderSystem() const {
+  RenderSystemPtr GetRenderSystem() const {
     return m_pRenderSystem;
   }
 //@}
@@ -65,6 +66,9 @@ public:
 private:
   Nebulae::KeyCode pressedKey;
   void OnKeyUp( Nebulae::KeyCode keyCode );
+
+  void SendClientUpdate();
+  void TryServerUpdate();
 
 }; //ClientState
 

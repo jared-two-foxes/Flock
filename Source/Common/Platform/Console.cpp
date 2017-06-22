@@ -97,5 +97,3 @@ Console::GetScreenBufferInfo( CONSOLE_SCREEN_BUFFER_INFO* pScreenBufferInfo )
     ErrorExit( L"Console::GetScreenBufferInfo" );
   }
 }
-
-

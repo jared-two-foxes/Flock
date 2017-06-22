@@ -11,9 +11,9 @@ namespace Console
 
 	void Init();
 
-	void Clear( char fill = ' ' );
+  void Clear( char fill = ' ' );
 
-  void SetCursorVisible( bool bVisible );	
+  void SetCursorVisible( bool bVisible );
 
   void SetCursorPosition( COORD& coord );
 

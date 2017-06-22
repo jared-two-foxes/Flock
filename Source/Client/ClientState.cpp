@@ -12,13 +12,86 @@
 
 #include <Nebulae/Common/Window/Window.h>
 
+#include <Brofiler.h>
+
 #include <iostream>
 #include <sstream>
+#include <thread>
 
 
 using namespace Nebulae;
 
 int identifier = -1;
+
+std::thread fetch_thread;
+volatile bool ready = false;
+
+
+
+
+void Thread()
+{
+  zmq::context_t context( 1 );
+  zmq::socket_t subscriber( context, ZMQ_SUB );
+  zmq::socket_t reply( context, ZMQ_REP );
+
+  try
+  {
+    reply.bind( "tcp://*:5558" );
+
+    subscriber.connect( "tcp://localhost:5556" );
+
+    // Setting subscription to all events. Argument is not currently supported, server doesnt push a identifier yet.
+    const char* filter = ""; //( argc > 1 ) ? argv[1] : "";
+    subscriber.setsockopt( ZMQ_SUBSCRIBE, filter, strlen( filter ) );
+
+    // Set the subscriber socket to only keep the most recent message, dont care about any other messages.
+    int conflate = 1;
+    subscriber.setsockopt( ZMQ_CONFLATE, &conflate, sizeof( conflate ) );
+  }
+  catch ( zmq::error_t& e )
+  {
+    std::cout << e.what();
+  }
+
+  zmq::message_t update;
+  ready = true;
+
+  while ( 1 )
+  {
+    try
+    {
+      // Check if there is a new server subscription message.
+      zmq::message_t next;
+      if ( subscriber.recv( &next, ZMQ_NOBLOCK ) )
+      {
+        // Only store this update if it has data.
+        if ( next.size() > 0 )
+        {
+          update = std::move( next );
+        }
+      }
+    }
+    catch( zmq::error_t& e )
+    {
+      std::cout << e.what();
+    }
+
+    try
+    {
+      // Check if we were asked for an update.
+      zmq::message_t request;
+      if ( reply.recv( &request, ZMQ_NOBLOCK ) )
+      {
+        reply.send( update );
+      }
+    }
+    catch ( zmq::error_t& e )
+    {
+      std::cout << e.what();
+    }
+  }
+}
 
 
 ClientState::ClientState() :
@@ -26,10 +99,15 @@ ClientState::ClientState() :
   m_pCamera( NULL ),
   m_pInputListener( std::make_unique<ClientInputListener >() ),
   context( std::make_unique<zmq::context_t>( 1 ) ),
-  subscriber( std::make_unique<zmq::socket_t>( *context, ZMQ_SUB ) ),
-  requestSocket( std::make_unique<zmq::socket_t>( *context, ZMQ_REQ ) ),
+  localSocket( std::make_unique<zmq::socket_t>( *context, ZMQ_REQ ) ),
+  serverSocket( std::make_unique<zmq::socket_t>( *context, ZMQ_REQ ) ),
+  m_lag( 0 ),
   pressedKey( Nebulae::VKC_UNKNOWN )
-{}
+{
+  AllocConsole();
+  freopen( "CONOUT$", "w", stdout );
+  freopen( "CONOUT$", "w", stderr );
+}
 
 
 ClientState::~ClientState()
@@ -39,6 +117,9 @@ ClientState::~ClientState()
 void
 ClientState::Enter( Nebulae::StateStack* caller )
 {
+  fetch_thread = std::thread( Thread );
+  while( !ready ); //Wait until we are ready to go.
+
   // Grab Application variables to help with setup.
   m_pRenderSystem = caller->GetRenderSystem();
 
@@ -48,7 +129,7 @@ ClientState::Enter( Nebulae::StateStack* caller )
 
   // Setup camera
   m_pCamera = std::make_shared<Camera >();
-  Vector4 vCameraEye( 0.0f, 0.0f, -10.0f );
+  Vector4 vCameraEye( 0.0f, 0.0f, 10.0f );
   Vector4 vLookAt( 0.0f, 0.0f, 0.0f );
   Vector4 vUp( 0.0f, 1.0f, 0.0f );
   m_pCamera->LookAt( vCameraEye, vLookAt, vUp );
@@ -56,11 +137,11 @@ ClientState::Enter( Nebulae::StateStack* caller )
 
   // Attempt to create a vertex shader.
   HardwareShader* pVertexShader = m_pRenderSystem->CreateShader(
-    "vs.glsl", VERTEX_SHADER );
+    "../../Media/vs.glsl", VERTEX_SHADER );
 
   // Attempt to create a fragment shader.
   HardwareShader* pPixelShader = m_pRenderSystem->CreateShader(
-    "fs.glsl", PIXEL_SHADER );
+    "../../Media/fs.glsl", PIXEL_SHADER );
 
   // @todo [jared.watt 25.05.2013] Leaks. Needs to be deleted somewhere.
   VertexDeceleration* pVertexDecl = new VertexDeceleration( 3 );
@@ -73,7 +154,7 @@ ClientState::Enter( Nebulae::StateStack* caller )
 
   // Setup a buffer for the entities
   {
-    std::vector<float > vertices( 256 * 7 );
+    std::vector<float > vertices( 256 * 6 );
     std::fill( vertices.begin(), vertices.end(), 1.0f );
 
     // Attempt to create a Buffer of video memory
@@ -113,26 +194,36 @@ ClientState::Enter( Nebulae::StateStack* caller )
   }
 
 
- // Setup the socket connections to the server
+  // Setup the socket connections to the local socket for grabing server Updates.
+  try 
   {
-    requestSocket->connect( "tcp://localhost:5555" );
-    subscriber->connect( "tcp://localhost:5556" );
-
-    // Setting subscription to all events. Argument is not currently supported, server doesnt push a identifier yet.
-    const char* filter = ""; //( argc > 1 ) ? argv[1] : "";
-    subscriber->setsockopt( ZMQ_SUBSCRIBE, filter, strlen( filter ) );
-
+    localSocket->connect( "tcp://localhost:5558" );
+  } 
+  catch ( zmq::error_t e )
+  {
+    std::cout << e.what() << std::endl;
+  }
+  
+  // Setup the socket connection to the server for user input.
+  try
+  {
+    serverSocket->connect( "tcp://localhost:5555" );
+   
     // Let the server know that we have connected!
     zmq::message_t message( 20 );
     snprintf( ( char * ) message.data(), 20, "new" );
-    requestSocket->send( message );
+    serverSocket->send( message );
 
     zmq::message_t reply;
-    requestSocket->recv( &reply ); //< blocking
+    serverSocket->recv( &reply ); //< blocking
 
     //@todo check that the reply is an int for the identifier.
     std::istringstream iss( static_cast< char* >( reply.data() ) );
     iss >> identifier;
+  }
+  catch ( zmq::error_t e )
+  {
+    std::cout << e.what() << std::endl;
   }
 
   // Add in the input listener.
@@ -149,108 +240,78 @@ ClientState::Exit( Nebulae::StateStack* caller )
 void
 ClientState::Update( float fDeltaTimeStep, Nebulae::StateStack* pCaller )
 {
-  // Attempt to pull a new update from publisher
-  zmq::message_t update;
+  BROFILER_CATEGORY( "ClientState::Update", Profiler::Color::AliceBlue );
 
-  if ( pressedKey != Nebulae::VKC_UNKNOWN )
+  if( pressedKey != Nebulae::VKC_UNKNOWN )
   {
-    zmq::message_t request( 32 );
-    switch ( pressedKey )
-    {
-    case Nebulae::VKC_LEFT:
-      snprintf( ( char * ) request.data(), 32, "%05d left", identifier );
-      break;
-
-    case Nebulae::VKC_RIGHT:
-      snprintf( ( char * ) request.data(), 32, "%05d right", identifier );
-      break;
-
-    case Nebulae::VKC_UP:
-      snprintf( ( char * ) request.data(), 32, "%05d up", identifier );
-      break;
-
-    case Nebulae::VKC_DOWN:
-      snprintf( ( char * ) request.data(), 32, "%05d down", identifier );
-      break;
-    }
-
-    requestSocket->send( request );
-
-    // then we wait for a reply?  Don't know if I really care about getting confirmation?
-    zmq::message_t reply;
-    requestSocket->recv( &reply ); //?? - , ZMQ_NOBLOCK 
+    SendClientUpdate();
   }
 
-  if ( subscriber->recv( &update, ZMQ_NOBLOCK ) )
-  {
-    // Process retrieved data.
-    int list_size;
-    char* data_ptr = ( char* ) update.data();
-    memcpy( &list_size, data_ptr, sizeof( int ) );
-    entities.resize( list_size );
-    memcpy( &entities[ 0 ], data_ptr + sizeof( int ), list_size * sizeof( entity_t ) ); //< Smash over the top all entities with info from server.
-    //ProcessUpdate( pushed_entities );
-
-    // Update the render buffer with the current positions of the entities
-    if ( entities.size() > 0 )
-    {
-      std::vector<float > vertices( entities.size() * 6 );
-      std::fill( vertices.begin(), vertices.end(), 1.0f );
-
-      int i = 0;
-      for ( entity_t& e : entities )
-      {
-        vertices[ i + 0 ] = e.position.x;
-        vertices[ i + 1 ] = e.position.y;
-
-        vertices[ i + 2 ] = e.colour.x;
-        vertices[ i + 3 ] = e.colour.y;
-        vertices[ i + 4 ] = e.colour.z;
-        vertices[ i + 5 ] = e.colour.w;
-
-        i += 6;
-      }
-
-      std::size_t offset = 0;
-      std::size_t length = entities.size() * 6 * sizeof( float );
-      HardwareBuffer* pBuffer = m_pRenderSystem->FindBufferByName( "EntitiesBuffer" );
-      //void* buf = pBuffer->Lock( Nebulae::HBL_DISCARD );
-      pBuffer->WriteData( offset, length, &vertices[ 0 ], true );
-      //pBuffer->Unlock();
-    }
-  }
+  TryServerUpdate();
 }
 
 
 void
 ClientState::Render() const
 {
-  HardwareShader* pVertexShader = m_pRenderSystem->FindShaderByName( "vs.glsl" );
-  HardwareShader* pPixelShader = m_pRenderSystem->FindShaderByName( "fs.glsl" );
-  m_pRenderSystem->SetShaders( pVertexShader, pPixelShader );
+  BROFILER_CATEGORY( "ClientState::Render", Profiler::Color::Violet );
 
-  // Create projection variable from desc.
-  UniformDefinition& worldVarDesc = m_pRenderSystem->GetUniformByName( "world" );
-  UniformDefinition& viewVarDesc = m_pRenderSystem->GetUniformByName( "view" );
-  UniformDefinition& projectionVarDesc = m_pRenderSystem->GetUniformByName( "projection" );
+  static long long last_server_time = std::numeric_limits<long long >::min();
+  static std::chrono::high_resolution_clock::time_point
+    _last = std::chrono::high_resolution_clock::now(),
+    _last_frame_time = std::chrono::high_resolution_clock::now();
+  static int _frame_count = 0;
+  static float frame_delta = 0;
+  static float fps = 0;
 
-  // Calculate the local transform of the particle
-  Matrix4 worldMatrix;
-  worldMatrix.SetIdentity();
+  auto now = std::chrono::high_resolution_clock::now();
+  frame_delta = std::chrono::duration<float, std::milli >( now - _last_frame_time ).count();
+  _last_frame_time = now;
 
-  float world[ 16 ], view[ 16 ], projection[ 16 ];
-  worldMatrix.GetOpenGL( &world[ 0 ] );
-  m_pCamera->GetViewMatrix().GetOpenGL( &view[ 0 ] );
-  m_pCamera->GetProjectionMatrix().GetOpenGL( &projection[ 0 ] );
+  if ( _frame_count >= 100 )
+  {
+    std::chrono::duration<float > delta = now - _last;
 
-  // Set camera transforms for pass
-  m_pRenderSystem->SetUniformBinding( worldVarDesc, ( void* ) &world[ 0 ] );
-  m_pRenderSystem->SetUniformBinding( viewVarDesc, ( void* ) &view[ 0 ] );
-  m_pRenderSystem->SetUniformBinding( projectionVarDesc, ( void* ) &projection[ 0 ] );
+    fps = _frame_count / delta.count();
+    _frame_count = 0;
+    _last = now;
+  }
+  else
+  {
+    _frame_count++;
+  }
 
+  {
+    BROFILER_CATEGORY( "PrepareShader", Profiler::Color::CornflowerBlue );
+
+    HardwareShader* pVertexShader = m_pRenderSystem->FindShaderByName( "../../Media/vs.glsl" );
+    HardwareShader* pPixelShader = m_pRenderSystem->FindShaderByName( "../../Media/fs.glsl" );
+    m_pRenderSystem->SetShaders( pVertexShader, pPixelShader );
+
+    // Create projection variable from desc.
+    UniformDefinition& worldVarDesc = m_pRenderSystem->GetUniformByName( "world" );
+    UniformDefinition& viewVarDesc = m_pRenderSystem->GetUniformByName( "view" );
+    UniformDefinition& projectionVarDesc = m_pRenderSystem->GetUniformByName( "projection" );
+
+    // Calculate the local transform of the particle
+    Matrix4 worldMatrix;
+    worldMatrix.SetIdentity();
+
+    float world[ 16 ], view[ 16 ], projection[ 16 ];
+    worldMatrix.GetOpenGL( &world[ 0 ] );
+    m_pCamera->GetViewMatrix().GetOpenGL( &view[ 0 ] );
+    m_pCamera->GetProjectionMatrix().GetOpenGL( &projection[ 0 ] );
+
+    // Set camera transforms for pass
+    m_pRenderSystem->SetUniformBinding( worldVarDesc, ( void* ) &world[ 0 ] );
+    m_pRenderSystem->SetUniformBinding( viewVarDesc, ( void* ) &view[ 0 ] );
+    m_pRenderSystem->SetUniformBinding( projectionVarDesc, ( void* ) &projection[ 0 ] );
+  }
 
   // Draw Box Lines.
   {
+    BROFILER_CATEGORY( "DrawBox", Profiler::Color::LightGreen );
+
     m_pRenderSystem->SetOperationType( OT_LINES );
 
     // Set the Vertex Buffer
@@ -285,11 +346,186 @@ ClientState::Render() const
     // Draw Entity Dot.
     m_pRenderSystem->Draw( entities.size(), 0 );
   }
-
 }
+
 
 void
 ClientState::OnKeyUp( Nebulae::KeyCode keyCode )
 {
   pressedKey = keyCode;
+}
+
+
+void
+ClientState::SendClientUpdate()
+///
+/// Attempt to send the Server a update message containing any relevant player information 
+/// which should result in the player changing behaviour in the server's simulation of the 
+/// game world. 
+///
+{
+  NE_ASSERT( pressedKey != Nebulae::VKC_UNKNOWN, "No valid keypress to send to the Server found" )();
+ 
+  static int state = 0;
+
+  try
+  {
+    if( state == 0 )
+    {
+      zmq::message_t request( 32 );
+      switch ( pressedKey )
+      {
+      case Nebulae::VKC_LEFT:
+        snprintf( ( char * ) request.data(), 32, "%05d left", identifier );
+        break;
+
+      case Nebulae::VKC_RIGHT:
+        snprintf( ( char * ) request.data(), 32, "%05d right", identifier );
+        break;
+
+      case Nebulae::VKC_UP:
+        snprintf( ( char * ) request.data(), 32, "%05d up", identifier );
+        break;
+
+      case Nebulae::VKC_DOWN:
+        snprintf( ( char * ) request.data(), 32, "%05d down", identifier );
+        break;
+      }
+
+      if( serverSocket->send( request, ZMQ_NOBLOCK ) )
+      { 
+        state++;
+      }
+    }
+
+    if( state == 1 )
+    {
+      // Wait on the receipt back from the Server that it received the update.
+      zmq::message_t reply;
+      if ( serverSocket->recv( &reply, ZMQ_NOBLOCK ) )
+      {
+        // Clear the key ready for next press.
+        pressedKey = Nebulae::VKC_UNKNOWN;
+        state = 0;
+      }
+    }
+  }
+  catch( zmq::error_t& e )
+  {
+    NE_LOG( e.what() );
+  }
+  catch ( ... )
+  {
+    NE_LOG( "Unhandled exception!" );
+  }
+}
+
+
+void
+ClientState::TryServerUpdate()
+///
+/// Attempts to poll the server "heartbeat" listener socket for the latest server update.  
+///
+{
+  static long long last_server_time = std::numeric_limits<long long >::min();
+  static int       state            = 0;
+
+  try
+  {
+    zmq::message_t update;
+
+    // Request an update from the local listener socket.
+    if ( state == 0 )
+    {
+      zmq::message_t request( 1 );
+      if ( localSocket->send( request, ZMQ_NOBLOCK ) )
+      {
+        state++;
+      }
+    }
+
+    // Receive the Server update.
+    if ( state == 1 )
+    {
+      if ( localSocket->recv( &update, ZMQ_NOBLOCK ) )
+      {
+        if ( update.size() > 0 )
+        {
+          state++;
+        }
+        else
+        {
+          state = 0; //< update received didnt contain any information, disregard and start again.
+        }
+      }
+    }
+
+    // Process retrieved server data.
+    if ( state == 2 )
+    {
+      int list_size;
+      long long timestamp;
+      char* data_ptr = ( char* ) update.data();
+      assert( update.size() >= sizeof( long long ) );
+      memcpy( &timestamp, data_ptr, sizeof( long long ) );
+      assert( update.size() >= sizeof( long long ) + sizeof( int ) );
+      memcpy( &list_size, data_ptr + sizeof( long long ), sizeof( int ) );
+      entities.resize( list_size );
+      assert( update.size() >= sizeof( long long ) + sizeof( int ) + list_size * sizeof( entity_t ) );
+      memcpy( &entities[ 0 ], data_ptr + sizeof( long long ) + sizeof( int ), list_size * sizeof( entity_t ) ); //< Smash over the top all entities with info from server.
+
+      assert( last_server_time < timestamp );
+      last_server_time = timestamp;
+
+      static std::chrono::high_resolution_clock::time_point epoch;
+      auto since_epoch = std::chrono::nanoseconds( last_server_time );
+      auto server_time = epoch + since_epoch;
+
+      auto now = std::chrono::high_resolution_clock::now();
+      auto now_since_epoch = now.time_since_epoch();
+      assert( server_time < now );
+
+      m_lag = std::chrono::duration_cast<std::chrono::milliseconds >( now - server_time ).count();
+
+      // Update the render buffer with the current positions of the entities
+      if ( entities.size() > 0 )
+      {
+        std::vector<float > vertices( entities.size() * 6 );
+        std::fill( vertices.begin(), vertices.end(), 1.0f );
+
+        int i = 0;
+        for ( entity_t& e : entities )
+        {
+          vertices[ i + 0 ] = e.position.x;
+          vertices[ i + 1 ] = e.position.y;
+
+          vertices[ i + 2 ] = e.colour.x;
+          vertices[ i + 3 ] = e.colour.y;
+          vertices[ i + 4 ] = e.colour.z;
+          vertices[ i + 5 ] = e.colour.w;
+
+          i += 6;
+        }
+
+        HardwareBuffer* pBuffer = m_pRenderSystem->FindBufferByName( "EntitiesBuffer" );
+        if( pBuffer )
+        {
+          std::size_t offset = 0;
+          std::size_t length = entities.size() * 6 * sizeof( float );
+          pBuffer->WriteData( offset, length, &vertices[ 0 ], true );
+        }
+      }
+
+      // Reset the state so that we start the process over.
+      state = 0;
+    }
+  }
+  catch ( zmq::error_t e )
+  {
+    NE_LOG( e.what() );
+  }
+  catch ( ... )
+  {
+    NE_LOG( "Unhandled exception!" );
+  }
 }
