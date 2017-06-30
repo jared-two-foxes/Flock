@@ -1,7 +1,7 @@
 
 #include "Flocking.hpp"
 #include <assert.h>
-
+#include <algorithm>
 
 void Attraction( entity_t& entity, entity_t& target )
 {
@@ -13,27 +13,18 @@ void Attraction( entity_t& entity, entity_t& target )
   if ( len > 0 )
   {
     vector2_t norm = Normalize( dir );
-    entity.position = entity.position + Truncate( norm * entity.speed, len );
+    entity.position = entity.position + norm * std::min<float >( entity.speed, len );
   }
 }
 
 
-void Attraction( entity_t& entity, std::vector<entity_t >& entities )
+void Attraction( std::vector<entity_t >& entities, entity_t& target )
 {
   for ( auto& e : entities )
   {
-    if ( entity.identifier == e.identifier )
+    if( !e.player )
     {
-      continue;
-    }
-
-    // Move e towards entity.
-    vector2_t dir = entity.position - e.position;
-    float     len = Length( dir );
-    if ( len > 0 )
-    {
-      vector2_t norm = Normalize( dir );
-      entity.position = entity.position + Truncate( norm * entity.speed, len );
+      Attraction( e, target );
     }
   }
 }

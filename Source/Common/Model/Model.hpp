@@ -15,8 +15,10 @@ public:
 
   virtual ~Model() {}
 
+  std::vector<entity_t >& Entities() { return m_entities; }
   const std::vector<entity_t >& Entities() const { return m_entities; }
 
+  std::size_t Count() const { return m_entities.size(); }
   const entity_t* Get( int identifier ) const;
   entity_t* Get( int identifier );
 

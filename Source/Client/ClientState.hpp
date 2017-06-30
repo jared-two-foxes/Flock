@@ -65,6 +65,7 @@ public:
 
 private:
   Nebulae::KeyCode pressedKey;
+  void OnKeyDown( Nebulae::KeyCode keyCode );
   void OnKeyUp( Nebulae::KeyCode keyCode );
 
   void SendClientUpdate();

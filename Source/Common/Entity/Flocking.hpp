@@ -7,7 +7,7 @@
 
 void Attraction( entity_t& entity, entity_t& target );
 
-void Attraction( entity_t& entity, std::vector<entity_t >::iterator entities );
+void Attraction( std::vector<entity_t >& entities, entity_t& target );
 void Seperation( entity_t& entity, std::vector<entity_t >& entities );
 void Cohesion( entity_t& entity, std::vector<entity_t >& entities );
 

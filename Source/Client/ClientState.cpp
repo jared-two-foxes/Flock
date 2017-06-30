@@ -22,11 +22,50 @@
 using namespace Nebulae;
 
 int identifier = -1;
-
 std::thread fetch_thread;
 volatile bool ready = false;
 
 
+void
+DrawCircle( const vector2_t& p, float r, int num_segments, const vector4_t& d, std::vector<float >* vertices )
+// GL_LINE_LOOP
+{
+  float theta = 2 * 3.1415926 / float( num_segments );
+  float c = cosf( theta );//precalculate the sine and cosine
+  float s = sinf( theta );
+  float t;
+
+  float x = r;//we start at angle = 0 
+  float y = 0;
+
+  int i = 0;
+
+  // To create using a triangle fan.
+  ( *vertices )[ i++ ] = p.x; 
+  ( *vertices )[ i++ ] = p.y;
+  ( *vertices )[ i++ ] = d.x;
+  ( *vertices )[ i++ ] = d.y;
+  ( *vertices )[ i++ ] = d.z;
+  ( *vertices )[ i++ ] = d.w;
+
+  for ( int ii = 0; ii < num_segments + 1; ii++ )
+  {
+    // Output vertex 
+    ( *vertices )[ i++ ] = x + p.x;
+    ( *vertices )[ i++ ] = y + p.y;
+
+    // Output colour
+    ( *vertices )[ i++ ] = d.x;
+    ( *vertices )[ i++ ] = d.y;
+    ( *vertices )[ i++ ] = d.z;
+    ( *vertices )[ i++ ] = d.w;
+
+    //apply the rotation matrix
+    t = x;
+    x = c * x - s * y;
+    y = s * t + c * y;
+  }
+}
 
 
 void Thread()
@@ -72,7 +111,7 @@ void Thread()
         }
       }
     }
-    catch( zmq::error_t& e )
+    catch ( zmq::error_t& e )
     {
       std::cout << e.what();
     }
@@ -118,7 +157,7 @@ void
 ClientState::Enter( Nebulae::StateStack* caller )
 {
   fetch_thread = std::thread( Thread );
-  while( !ready ); //Wait until we are ready to go.
+  while ( !ready ); //Wait until we are ready to go.
 
   // Grab Application variables to help with setup.
   m_pRenderSystem = caller->GetRenderSystem();
@@ -154,14 +193,14 @@ ClientState::Enter( Nebulae::StateStack* caller )
 
   // Setup a buffer for the entities
   {
-    std::vector<float > vertices( 256 * 6 );
+    std::vector<float > vertices( 64 * 6 );
     std::fill( vertices.begin(), vertices.end(), 1.0f );
 
     // Attempt to create a Buffer of video memory
     HardwareBuffer* pBuffer = m_pRenderSystem->CreateBuffer(
       "EntitiesBuffer",
       HBU_STATIC,
-      256 * 6 * sizeof( Real ),
+      64 * 6 * sizeof( Real ),
       HardwareBufferBinding::HBB_VERTEX,
       &vertices[ 0 ] );
   }
@@ -195,20 +234,20 @@ ClientState::Enter( Nebulae::StateStack* caller )
 
 
   // Setup the socket connections to the local socket for grabing server Updates.
-  try 
+  try
   {
     localSocket->connect( "tcp://localhost:5558" );
-  } 
+  }
   catch ( zmq::error_t e )
   {
     std::cout << e.what() << std::endl;
   }
-  
+
   // Setup the socket connection to the server for user input.
   try
   {
     serverSocket->connect( "tcp://localhost:5555" );
-   
+
     // Let the server know that we have connected!
     zmq::message_t message( 20 );
     snprintf( ( char * ) message.data(), 20, "new" );
@@ -242,7 +281,7 @@ ClientState::Update( float fDeltaTimeStep, Nebulae::StateStack* pCaller )
 {
   BROFILER_CATEGORY( "ClientState::Update", Profiler::Color::AliceBlue );
 
-  if( pressedKey != Nebulae::VKC_UNKNOWN )
+  if ( pressedKey != Nebulae::VKC_UNKNOWN )
   {
     SendClientUpdate();
   }
@@ -329,14 +368,34 @@ ClientState::Render() const
 
 
   // Draw Entities.
+  std::vector<float > vertices( 64 * 6 );
+  for ( auto& e : entities )
   {
+    // Reset the Entity buffer for this entity.
+    vector4_t colour( 1.0f, 0.0f, 0.0f, 1.0f );
+    if ( e.player && e.identifier == identifier ) 
+    {
+      colour = vector4_t( 0, 1.0f, 0, 1.0f );
+    }
+    else if( e.player )
+    {
+      colour = vector4_t( 0, 0, 1.0f, 1.0f );
+    }
+    DrawCircle( e.position, e.radius, 32, colour, &vertices );
+    HardwareBuffer* pBuffer = m_pRenderSystem->FindBufferByName( "EntitiesBuffer" );
+    if ( pBuffer )
+    {
+      std::size_t offset = 0;
+      std::size_t length = 34 * 6 * sizeof( float );
+      pBuffer->WriteData( offset, length, &vertices[ 0 ], true );
+    }
+
     // Set the operation type
-    m_pRenderSystem->SetOperationType( OT_POINTS );
+    m_pRenderSystem->SetOperationType( OT_TRIANGLEFAN );
 
     // Set the Vertex Buffer
     size_t iOffset = 0;
     size_t iStride = 6 * sizeof( Real );
-    HardwareBuffer* pBuffer = m_pRenderSystem->FindBufferByName( "EntitiesBuffer" );
     m_pRenderSystem->SetVertexBuffers( 0, pBuffer, iStride, iOffset );
 
     // Set the Vertex input layout
@@ -344,15 +403,23 @@ ClientState::Render() const
     m_pRenderSystem->SetInputLayout( pInputLayout );
 
     // Draw Entity Dot.
-    m_pRenderSystem->Draw( entities.size(), 0 );
+    m_pRenderSystem->Draw( 34, 0 );
   }
+}
+
+
+void
+ClientState::OnKeyDown( Nebulae::KeyCode keyCode )
+{
+  pressedKey = keyCode;
 }
 
 
 void
 ClientState::OnKeyUp( Nebulae::KeyCode keyCode )
 {
-  pressedKey = keyCode;
+  //@todo handle multikey presses?
+  pressedKey = Nebulae::VKC_UNKNOWN;
 }
 
 
@@ -364,13 +431,13 @@ ClientState::SendClientUpdate()
 /// game world. 
 ///
 {
-  NE_ASSERT( pressedKey != Nebulae::VKC_UNKNOWN, "No valid keypress to send to the Server found" )();
- 
+  NE_ASSERT( pressedKey != Nebulae::VKC_UNKNOWN, "No valid keypress to send to the Server found" )( );
+
   static int state = 0;
 
   try
   {
-    if( state == 0 )
+    if ( state == 0 )
     {
       zmq::message_t request( 32 );
       switch ( pressedKey )
@@ -392,25 +459,25 @@ ClientState::SendClientUpdate()
         break;
       }
 
-      if( serverSocket->send( request, ZMQ_NOBLOCK ) )
-      { 
+      if ( serverSocket->send( request, ZMQ_NOBLOCK ) )
+      {
         state++;
       }
     }
 
-    if( state == 1 )
+    if ( state == 1 )
     {
       // Wait on the receipt back from the Server that it received the update.
       zmq::message_t reply;
       if ( serverSocket->recv( &reply, ZMQ_NOBLOCK ) )
       {
         // Clear the key ready for next press.
-        pressedKey = Nebulae::VKC_UNKNOWN;
+        //pressedKey = Nebulae::VKC_UNKNOWN;
         state = 0;
       }
     }
   }
-  catch( zmq::error_t& e )
+  catch ( zmq::error_t& e )
   {
     NE_LOG( e.what() );
   }
@@ -428,7 +495,7 @@ ClientState::TryServerUpdate()
 ///
 {
   static long long last_server_time = std::numeric_limits<long long >::min();
-  static int       state            = 0;
+  static int       state = 0;
 
   try
   {
@@ -485,10 +552,10 @@ ClientState::TryServerUpdate()
       auto now_since_epoch = now.time_since_epoch();
       assert( server_time < now );
 
-      m_lag = std::chrono::duration_cast<std::chrono::milliseconds >( now - server_time ).count();
+      m_lag = std::chrono::duration_cast< std::chrono::milliseconds >( now - server_time ).count();
 
       // Update the render buffer with the current positions of the entities
-      if ( entities.size() > 0 )
+      /*if ( entities.size() > 0 )
       {
         std::vector<float > vertices( entities.size() * 6 );
         std::fill( vertices.begin(), vertices.end(), 1.0f );
@@ -514,7 +581,7 @@ ClientState::TryServerUpdate()
           std::size_t length = entities.size() * 6 * sizeof( float );
           pBuffer->WriteData( offset, length, &vertices[ 0 ], true );
         }
-      }
+      }*/
 
       // Reset the state so that we start the process over.
       state = 0;

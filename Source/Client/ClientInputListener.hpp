@@ -10,7 +10,7 @@ class ClientInputListener : public Nebulae::InputListener
 public:
   ClientState* state;
 
-  //virtual void KeyPressed( KeyCode keyCode, uint32 key_code_point, Flags<ModKey> modKeys ) override;
+  virtual void KeyPressed( Nebulae::KeyCode keyCode, uint32 key_code_point, Nebulae::Flags<Nebulae::ModKey> modKeys ) override;
   virtual void KeyReleased( Nebulae::KeyCode keyCode, uint32 key_code_point, Nebulae::Flags<Nebulae::ModKey> modKeys ) override;
 
 }; //ClientInputListener

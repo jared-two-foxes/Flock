@@ -7,10 +7,11 @@ struct entity_t
 {
 	int       identifier;
   float     speed;
+  float     radius;
 	vector2_t position;
   vector2_t direction;
   vector4_t colour;
-  int       player;
+  bool      player;
 };
 
 #endif // ENTITY_H__
