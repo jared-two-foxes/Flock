@@ -1,21 +1,21 @@
 
 
-inline plane_t::plane_t( const plane_t& rhs )
-  : p( rhs.p )
+inline plane_t::plane_t( const plane_t& rhs ) : 
+  n( rhs.n )
 {}
 
-inline plane_t::plane_t( float a, float b, float c, float d )
-  : p( a, b, c, d )
+inline plane_t::plane_t( float a, float b, float c, float d ) : 
+  n( a, b, c, d )
 {}
 
-inline plane_t::plane_t( const vector4_t& normal, const float constant )
-  : p( normal.x, normal.y, normal.z, constant )
+inline plane_t::plane_t( const vector4_t& normal, const float constant ) : 
+  n( normal.x, normal.y, normal.z, constant )
 {}
 
 inline plane_t::plane_t( const vector4_t& normal, const vector4_t& point )
 {
-  p = normal;
-  p.w = Length( point );
+  n = normal;
+  n.w = Length( point );
 }
 
 
@@ -25,7 +25,7 @@ inline plane_t::plane_t( const vector4_t& normal, const vector4_t& point )
 
 inline vector4_t plane_t::getNormal() const
 {
-  return vector4_t( p.x, p.y, p.z, 0 );
+  return vector4_t( n.x, n.y, n.z, 0 );
 }
 
 
@@ -35,5 +35,5 @@ inline vector4_t plane_t::getNormal() const
 
 inline float Distance( const plane_t& plane, const vector4_t& pt )
 {
-	return Dot3( plane.p, pt ) + plane.p.w;
+	return Dot3( plane.n, pt ) + plane.n.w;
 }

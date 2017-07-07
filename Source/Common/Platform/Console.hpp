@@ -2,9 +2,7 @@
 #define CONSOLE_H__
 
 #if defined(WIN32)
-#ifndef NOMINMAX
 #define NOMINMAX
-#endif
 #include <windows.h>
 #endif
 
@@ -13,9 +11,9 @@ namespace Console
 
 	void Init();
 
-	void Clear( char fill = ' ' );
+  void Clear( char fill = ' ' );
 
-  void SetCursorVisible( bool bVisible );	
+  void SetCursorVisible( bool bVisible );
 
   void SetCursorPosition( COORD& coord );
 

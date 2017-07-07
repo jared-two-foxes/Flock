@@ -1,14 +1,14 @@
 
 inline std::pair<bool, float > Intersects( const ray_t& ray, const plane_t& plane )
 {
-  float denom = Dot3( plane.p, ray.direction ); 
+  float denom = Dot3( plane.n, ray.direction ); 
   if ( fabs( denom ) < std::numeric_limits<float >::epsilon() )
   {
-    return std::pair<bool, float >( false, 0 );
+    return std::pair<bool, float >( false, 0.0f );
   }
   else
   {
-    float nom = Dot3( plane.p, ray.origin ) + plane.p.w;
+    float nom = Dot3( plane.n, ray.origin ) + plane.n.w;
     float t = -( nom / denom );
     return std::pair<bool, float >( t >= 0, t );
   }

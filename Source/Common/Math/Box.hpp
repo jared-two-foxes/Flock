@@ -7,8 +7,8 @@ struct box_t
 //
 {
 public:
-  vector4_t min;
-  vector4_t max;
+  vector4_t a; //min;
+  vector4_t b; //;
 
   public:
     box_t() {}

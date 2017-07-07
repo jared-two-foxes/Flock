@@ -1,5 +1,5 @@
 
-inline box_t::box_t( const vector4_t& c, const vector4_t& d ) 
+inline rect_t::rect_t( const vector2_t& c, const vector2_t& d ) 
   : a( c ), b( d )
 {}
 
