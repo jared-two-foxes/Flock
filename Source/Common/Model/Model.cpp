@@ -36,7 +36,7 @@ Model::CreateEntity()
   static int identifier = 0;
 
   m_entities.push_back( entity_t() );
-  entity_t& e = m_entities.back();
-  e.identifier = identifier++;
-  return &e;
+  entity_t* e = &m_entities.back();
+  e->identifier = identifier++;
+  return e;
 }

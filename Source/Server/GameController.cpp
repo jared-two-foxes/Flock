@@ -3,12 +3,13 @@
 
 #include <Common/Entity/Flocking.hpp>
 
+#include <assert.h>
+
 using namespace std::chrono;
 using namespace std::chrono_literals;
 
 
 const std::chrono::duration<float > GameController::SPAWN_INTERVAL( 2s );
-
 
 
 GameController::GameController( Model* model ) :
@@ -29,11 +30,10 @@ GameController::AddPlayer()
     player->radius = 2.5f;
     player->position = spawn_points[m_players.size()];
     player->direction = vector2_t( 0, 0 );
-    player->speed = 0.5f;
-    player->colour = vector4_t( 0, 1.0f, 0, 1.0f );
+    player->speed = 3.0f;
     player->player = true;
 
-    m_players.push_back( player );
+    m_players.push_back( player->identifier );
   }
 
   return player;
@@ -41,13 +41,12 @@ GameController::AddPlayer()
 
 
 void
-GameController::PrepareEntity( entity_t& entity, const vector4_t& colour, const rect_t& zone )
+GameController::PrepareEntity( entity_t& entity, const rect_t& zone )
 {
   entity.radius = 2.5f;
   entity.position.x = RandFloat( zone.a.x, zone.b.x );
   entity.position.y = RandFloat( zone.a.y, zone.b.y );
-  entity.colour = colour;
-  entity.speed = 0.01f;
+  entity.speed = 2.0f;
   entity.player = false; 
 }
 
@@ -59,14 +58,15 @@ GameController::Update( float delta )
   {
     m_secondsToNextSpawn -= duration<float >( delta );
 
-    if ( m_secondsToNextSpawn <= duration<float>::zero() )
+    if ( m_secondsToNextSpawn <= duration<float >::zero() )
     {
       entity_t* e = m_model->CreateEntity();
-      PrepareEntity( *e, vector4_t( 1.0, 0.0f, 0.0f, 1.0f ), m_zone );
+      PrepareEntity( *e, m_zone );
       m_secondsToNextSpawn += duration<float >( SPAWN_INTERVAL );
     }
 
-    //@todo - Move entities towards the closest entity only?
+    // Update all enemy entities direction such that movement will move them towards the
+    // nearest player
     for ( auto& e : m_model->Entities() )
     {
       if ( !e.player )
@@ -74,8 +74,10 @@ GameController::Update( float delta )
         float d = std::numeric_limits<float >::max();
         entity_t* t = nullptr;
 
-        for( auto& p : m_players )
+        for( auto i : m_players )
         {
+          entity_t* p = m_model->Get( i );
+          assert( p );
           float m = LengthSq( p->position - e.position );
           if( m < d )
           {
@@ -90,6 +92,10 @@ GameController::Update( float delta )
       }
     }
 
-    //Attraction( , *m_players[ 0 ] );
+    // Move all the entities based upon their speed based upon their movement direction.
+    for ( auto& e : m_model->Entities() )
+    {
+      e.position = e.position + e.direction * e.speed * delta;
+    }
   }
 }

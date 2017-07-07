@@ -14,13 +14,15 @@ public:
   Model* m_model;
   rect_t m_zone;
   std::chrono::duration<float > m_secondsToNextSpawn;
-  std::vector<entity_t* > m_players;
+  std::vector<int > m_players;
 
 public:
   GameController( Model* m_model );
 
+  std::vector<int >& GetPlayers() { return m_players; }
+ 
   virtual entity_t* AddPlayer();
-  virtual void PrepareEntity( entity_t& e, const vector4_t& colour, const rect_t& zone );
+  virtual void PrepareEntity( entity_t& e, const rect_t& zone );
   virtual void Update( float epsilon );
 
 };

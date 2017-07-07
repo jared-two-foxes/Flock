@@ -9,20 +9,35 @@
 
 #include <zmq.hpp>
 
+#include <thread>
 
 namespace Nebulae {
   class Camera;
   class RenderSystem;
 }
 
-class ClientInputListener;
 
 /** ClientState.
  */
-class ClientState : public Nebulae::State
+class ClientState : public Nebulae::State, public Nebulae::InputListener
 {
 public:
   friend class ClientInputListener;
+
+public:
+  enum PlayerAction
+  { 
+    INPUT_ACTION_LEFT,
+    INPUT_ACTION_RIGHT,
+    INPUT_ACTION_UP,
+    INPUT_ACTION_DOWN,
+  };
+
+  struct KeyBinding
+  {
+    Nebulae::KeyCode key;
+    PlayerAction     action;
+  };
 
 public:
   typedef std::shared_ptr<Nebulae::RenderSystem > RenderSystemPtr;
@@ -32,14 +47,19 @@ private:
   RenderSystemPtr m_pRenderSystem; ///< The rendering system.
   CameraPtr       m_pCamera;       ///< The camera for scene.
 
-  std::unique_ptr<ClientInputListener > m_pInputListener;
-
+  std::thread     m_fetch_thread;
+  
   std::vector<entity_t > entities;
+  vector2_t m_lastDirection;
 
   std::unique_ptr<zmq::context_t > context;
   std::unique_ptr<zmq::socket_t >  localSocket;
   std::unique_ptr<zmq::socket_t >  serverSocket;
   long long m_lag;
+
+  std::vector<KeyBinding >   m_inputBindings;
+  std::vector<PlayerAction > m_activeActions;
+  std::string  m_lastCommand;     ///< The last command that was sent to the server for this player.
 
 public:
   /** \name Structors */ ///@{
@@ -64,12 +84,17 @@ public:
 //@}
 
 private:
-  Nebulae::KeyCode pressedKey;
-  void OnKeyDown( Nebulae::KeyCode keyCode );
-  void OnKeyUp( Nebulae::KeyCode keyCode );
+  void SetBinding( int variant );
+  virtual void KeyPressed( Nebulae::KeyCode keyCode, uint32 key_code_point, Nebulae::Flags<Nebulae::ModKey> modKeys ) override;
+  virtual void KeyReleased( Nebulae::KeyCode keyCode, uint32 key_code_point, Nebulae::Flags<Nebulae::ModKey> modKeys ) override;
 
+  std::string GetCurrentCommand() const;
+  vector2_t GetDirectionFromCommand( const std::string& cmd );
   void SendClientUpdate();
-  void TryServerUpdate();
+  
+  bool TryServerUpdate();
+
+  void SimulateStep( float fDeltaTimeStep );
 
 }; //ClientState
 

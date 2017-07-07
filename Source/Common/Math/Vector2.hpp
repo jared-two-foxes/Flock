@@ -17,6 +17,8 @@ public:
 
 };
 
+bool operator ==( const vector2_t& a, const vector2_t& b );
+
 float Length( const vector2_t& v );
 float LengthSq( const vector2_t& v );
 vector2_t Normalize( const vector2_t& v );

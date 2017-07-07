@@ -1,38 +1,50 @@
 Flock
 
 # Active {Server}
-  
-# Active {Client}
-  [] Simulate game state on client based upon current information inbetween server updates.
-  [] Other players should appear as differently to this player (Colour?)
+  [] Entities shrink over time.
 
+# Active {Client}
+  [] Player needs to have a better representation to indicate facing
+  
+  
 # Backlog
 
 ## Server
+  [] Implement a reset/restart command.
+  [] Enemies run from players, 
+
   [] Restrict to 4 players at a time.
-  [] Support multi directional movement, allow for vertical and horizontal movement at the same time
-  [] If an enemy intersects with a player that player "dies"
+  [] If an enemy intersects with a player that enemy is consumed by the player.  Player score goes up.  Players radius increases.
+  [] Player dies when they run out of radius
   [] Last surviving player wins.
   
 ## Client
-  [] Enable customizable key bindings so that 2 players can play on the same machine.
+  [] Support multiple players on the same window?
+    [] Spawn number of players based upon release of number button, rather than on creation.
   [] Change the background to something more appealing
-  [] Player needs to have a better representation to indicate facing
   [] Implemented ThreadedSocket which continuously polls and stores the most current message that its recieved only and returns that via a recv function.
 
 ## Dreams & Further Projects
-  [] Implement player "attack nodes"
-  [] Implement scoring mechanic per player
   [] Implement a spectator mode.
-  [] Implement player attacks damaging other players
-
+  
 
 # Complete
 
+## 06-07-2017
+  [] Support multi directional movement, allow for vertical and horizontal movement at the same time
+  [] Enable customizable key bindings so that 2 players can play on the same machine.
+
+## 05-07-2017
+  [Client] Simulate game state on client based upon current information inbetween server updates.
+  {Server-Bug} Enemies appear to be attracted to the locations that the players start not the players actual locations.
+
+## 04-07-2017
+  [Client] Other players should appear as differently to this player (Colour?)
+
 ## 30-06-2017
-  [] Mulitplayer connection support.
-  [] Have enemy entities move towards the closest player
-  [] Inbound client messages need to be tagged with the player id.
+  [Server] Mulitplayer connection support.
+  [Server] Have enemy entities move towards the closest player
+  [Client] Inbound client messages need to be tagged with the player id.
 
 ## 29-06-2017
   [Client] Enemy entities need to show their radius

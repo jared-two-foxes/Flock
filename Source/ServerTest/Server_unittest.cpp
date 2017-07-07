@@ -126,7 +126,7 @@ TEST( Server, PlayerInput_Connect_RepliesWithIdentifier )
 }
 
 
-TEST( Server, PlayerInput_Update_SetsPlayersPosition )
+TEST( Server, PlayerInput_Update_SetsPlayersDirection )
 {
   Model model;
   NiceMock<MockGameController > controller( &model );
@@ -141,7 +141,7 @@ TEST( Server, PlayerInput_Update_SetsPlayersPosition )
   vector2_t original = e->position;
   client.pushClientMessage( server, std::to_string( e->identifier ) + " left" );
 
-  EXPECT_LT( e->position.x, original.x );
+  EXPECT_EQ( e->direction, vector2_t( -1, 0 ) );
 }
 
 TEST( Server, PlayerInput_Update_ValidArgsReturnsSuccess )

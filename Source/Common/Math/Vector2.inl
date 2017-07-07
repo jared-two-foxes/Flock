@@ -30,6 +30,15 @@ inline vector2_t vector2_t::operator/ ( const float s )
 // Free Functions
 // ----------------
 
+
+inline bool operator ==( const vector2_t& a, const vector2_t& b )
+{
+  return 
+    fabs( a.x - b.x ) < EPS && 
+    fabs( a.y - b.y ) < EPS;
+}
+
+
 inline float Length( const vector2_t& v ) 
 {
   return sqrtf( v.x * v.x + v.y * v.y ); 

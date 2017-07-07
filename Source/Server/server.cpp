@@ -13,7 +13,7 @@ std::chrono::high_resolution_clock::time_point _last, _open, _next;
 float _frame_time;
 CONSOLE_SCREEN_BUFFER_INFO _initial_console_info, _final_console_info;
 
-std::chrono::milliseconds PUBLISH_FREQUENCY = 30ms;
+std::chrono::milliseconds PUBLISH_FREQUENCY = 1s;
 
 Server::Server( Model* model, GameController* controller ) :
   m_context( std::make_unique<zmq::context_t >( 1 ) ),
@@ -58,7 +58,14 @@ Server::PrintToConsole()
   std::cout << "--------------------------------------------------------" << std::endl;
   std::cout << "Frame Time  (ms): " << _frame_time * 1000.0f << std::endl;
   std::cout << "Uptime (s): " << duration<float >( high_resolution_clock::now() - _open ).count() << std::endl;
-  //std::cout << "Players: " << players.size() << std::endl;
+  std::cout << "Players: " << m_controller->GetPlayers().size(); // << std::endl;
+  for( auto i : m_controller->GetPlayers() )
+  {
+    entity_t* p = m_model->Get( i );
+    assert( p );
+    std::cout << " {" << p->position.x << ", " << p->position.y << "}, ";
+  }
+  std::cout << std::endl;
   std::cout << "Entities: " << m_model->Entities().size() << std::endl;
   std::cout << "Timestamp: " << _last.time_since_epoch().count() << std::endl;
 
@@ -74,11 +81,7 @@ Server::Update()
   duration<float > duration = ( now - _last );
   _frame_time = duration.count();
 
-  // Update the game state.
-  m_controller->Update( _frame_time );
-
-
-  // Check for anu Client messages.
+  // Check for any Client messages.
   zmq::message_t request;
   if ( m_listener->recv( &request, ZMQ_NOBLOCK ) )
   {
@@ -87,6 +90,9 @@ Server::Update()
 
     m_listener->send( reply );
   }
+
+  // Update the game state.
+  m_controller->Update( _frame_time );
 
   // Push the current state out to all of the subscribers
   if( now >= _next )
@@ -126,21 +132,37 @@ Server::ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply )
   {
     // Extract the command & identifier.
     int identifier;
-    std::string command;
-    iss >> identifier >> command;
-
+    char command[64];
+    std::sscanf( iss.str().c_str(), "%d%s", &identifier, command );
+    
     // Find the entity.
     entity_t* e = m_model->Get( identifier );
     if ( e )
     {
-      if ( command == "left" )
-        e->position.x -= e->speed;
-      else if ( command == "right" )
-        e->position.x += e->speed;
-      else if ( command == "up" )
-        e->position.y += e->speed;
-      else if ( command == "down" )
-        e->position.y -= e->speed;
+      vector2_t d( 0, 0 );
+      if ( strstr( command, "left" ) != nullptr )
+      {
+        d.x -= 1.0f;
+      }
+      if ( strstr( command, "right" ) != nullptr )
+      {
+        d.x += 1.0f;
+      }
+      if ( strstr( command, "up" ) != nullptr )
+      {
+        d.y += 1.0f;;
+      }
+      if ( strstr( command, "down" ) != nullptr )
+      {
+        d.y -= 1.0f;
+      }
+
+      if ( d.x > 0 || d.y > 0 )
+      {
+        d = Normalize( d );
+      }
+
+      e->direction = d;
 
       // Send reply back to client
       memcpy( ( char * ) reply->data(), "OK", 3 );

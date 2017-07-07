@@ -12,8 +12,7 @@ void Attraction( entity_t& entity, entity_t& target )
   float     len = Length( dir );
   if ( len > 0 )
   {
-    vector2_t norm = Normalize( dir );
-    entity.position = entity.position + norm * std::min<float >( entity.speed, len );
+    entity.direction = Normalize( dir );
   }
 }
 
@@ -41,10 +40,10 @@ void Seperation( entity_t& entity, std::vector<entity_t >& entities )
 
     // Move e towards entity, unless they occupy the same spot in which case do nothing.
     vector2_t dir = e.position - entity.position;
-    if ( Length( dir ) > 0 )
+    float     len = Length( dir );
+    if ( len > 0 )
     {
-      vector2_t norm = Normalize( dir );
-      e.position = e.position + ( norm * e.speed );
+      e.direction = Normalize( dir );
     }
   }
 }

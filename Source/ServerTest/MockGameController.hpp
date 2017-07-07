@@ -12,7 +12,7 @@ public:
     GameController( model )
   {}
 
-  MOCK_METHOD3( PrepareEntity, void( entity_t&, const vector4_t&, const rect_t& ) );
+  MOCK_METHOD2( PrepareEntity, void( entity_t&, const rect_t& ) );
   MOCK_METHOD1( Update, void ( float ) );
 
   void ParentClass_Update( float elapsed ) {
