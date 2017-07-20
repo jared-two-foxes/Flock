@@ -3,6 +3,7 @@
 
 #include <Common/Platform/Console.hpp>
 
+#include <boost/tokenizer.hpp>
 
 #include <iostream>  // was included in <zhelpers.hpp> 
 #include <sstream>
@@ -59,7 +60,7 @@ Server::PrintToConsole()
   std::cout << "Frame Time  (ms): " << _frame_time * 1000.0f << std::endl;
   std::cout << "Uptime (s): " << duration<float >( high_resolution_clock::now() - _open ).count() << std::endl;
   std::cout << "Players: " << m_controller->GetPlayers().size(); // << std::endl;
-  for( auto i : m_controller->GetPlayers() )
+  for ( auto i : m_controller->GetPlayers() )
   {
     entity_t* p = m_model->Get( i );
     assert( p );
@@ -95,7 +96,7 @@ Server::Update()
   m_controller->Update( _frame_time );
 
   // Push the current state out to all of the subscribers
-  if( now >= _next )
+  if ( now >= _next )
   {
     long long nanoseconds_since_epoch = now.time_since_epoch().count();
 
@@ -116,61 +117,95 @@ Server::Update()
 void
 Server::ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply )
 {
-  // //  Do some 'work'
-  std::istringstream iss( static_cast< char* >( request.data() ) );
+  static int s_nextClientID = 0;
 
-  if ( iss.str() == "new" )
+  std::string str( static_cast< char* >( request.data() ) );
+  boost::char_separator<char> sep( " " );
+  boost::tokenizer<boost::char_separator<char> > tokens( str, sep );
+
+  std::vector<std::string > tokenList;
+  for ( auto it = tokens.begin(); it != tokens.end(); ++it )
   {
-    // Create a new player entity.
-    entity_t* player = m_controller->AddPlayer();
-
-    // Send reply back to client of the id that this player will be.
-    snprintf( ( char * ) reply->data(), 6,
-      "%05d", player->identifier );
+    tokenList.push_back( *it );
   }
-  else
+
+  if ( tokenList[ 0 ] == "join" )
   {
-    // Extract the command & identifier.
-    int identifier;
-    char command[64];
-    std::sscanf( iss.str().c_str(), "%d%s", &identifier, command );
-    
-    // Find the entity.
-    entity_t* e = m_model->Get( identifier );
-    if ( e )
+    // Respond with a client-id.
+    snprintf( ( char * ) reply->data(), 6, "%05d", s_nextClientID++ );
+  }
+  else if ( tokenList[ 0 ] == "create" )
+  {
+    // Extract the number of players to create.
+    int n = atoi( tokenList[ 1 ].c_str() );
+
+    // Create a new player entity.
+    std::vector<int > identifiers;
+    for ( int i = 0; i < n; ++i )
     {
-      vector2_t d( 0, 0 );
-      if ( strstr( command, "left" ) != nullptr )
-      {
-        d.x -= 1.0f;
-      }
-      if ( strstr( command, "right" ) != nullptr )
-      {
-        d.x += 1.0f;
-      }
-      if ( strstr( command, "up" ) != nullptr )
-      {
-        d.y += 1.0f;;
-      }
-      if ( strstr( command, "down" ) != nullptr )
-      {
-        d.y -= 1.0f;
-      }
+      entity_t* player = m_controller->AddPlayer();
+      assert( player != nullptr );
+      identifiers.push_back( player->identifier );
+    }
 
-      if ( d.x > 0 || d.y > 0 )
+    if ( !identifiers.empty() )
+    {
+      std::string msg( "OK" );
+      for ( int id : identifiers )
       {
-        d = Normalize( d );
+        msg += " ";
+        msg += std::to_string( id );
       }
-
-      e->direction = d;
-
-      // Send reply back to client
-      memcpy( ( char * ) reply->data(), "OK", 3 );
+      memcpy( reply->data(), msg.c_str(), msg.length() );
     }
     else
     {
-      // Send reply back to client
-      memcpy( ( char * ) reply->data(), "INVALID_ID", 11 );
+      //@todo - return failure?
     }
+  }
+  else
+  {
+    int i = 1;
+    for ( ; i < tokenList.size(); ++i )
+    {
+      // Extract the command & identifier.
+      int identifier = atoi( tokenList[ i++ ].c_str() );
+
+      // Find the entity.
+      entity_t* e = m_model->Get( identifier );
+      if ( e )
+      {
+        vector2_t d( 0, 0 );
+        if( i < tokenList.size() )
+        {
+          if ( strstr( tokenList[ i ].c_str(), "left" ) != nullptr )
+          {
+            d.x -= 1.0f;
+          }
+          if ( strstr( tokenList[ i ].c_str(), "right" ) != nullptr )
+          {
+            d.x += 1.0f;
+          }
+          if ( strstr( tokenList[ i ].c_str(), "up" ) != nullptr )
+          {
+            d.y += 1.0f;;
+          }
+          if ( strstr( tokenList[ i ].c_str(), "down" ) != nullptr )
+          {
+            d.y -= 1.0f;
+          }
+        }
+
+        if ( d.x > 0 || d.y > 0 )
+        {
+          d = Normalize( d );
+        }
+
+        e->direction = d;
+      }
+    }
+
+    // Send reply back to client
+    memcpy( ( char * ) reply->data(), "OK", 3 );
   }
 }
