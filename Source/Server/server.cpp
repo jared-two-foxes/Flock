@@ -54,6 +54,7 @@ Server::Init( const char* publisherEndPoint, const char* listenerEndPoint )
 void
 Server::PrintToConsole()
 {
+  //// First clear the current contents.
   Console::SetCursorPosition( _initial_console_info.dwCursorPosition );
 
   std::cout << "--------------------------------------------------------" << std::endl;
@@ -119,10 +120,16 @@ Server::ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply )
 {
   static int s_nextClientID = 0;
 
-  std::string str( static_cast< char* >( request.data() ) );
+  char buffer[256];
+  memset( buffer, 0, 256 );
+  //assert buffer size?
+  memcpy( buffer, request.data(), request.size() );
+  buffer[request.size()] = 0; //< null terminator.
+
+  std::string str( buffer );
   boost::char_separator<char> sep( " " );
   boost::tokenizer<boost::char_separator<char> > tokens( str, sep );
-
+ 
   std::vector<std::string > tokenList;
   for ( auto it = tokens.begin(); it != tokens.end(); ++it )
   {
@@ -165,32 +172,33 @@ Server::ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply )
   }
   else
   {
-    int i = 1;
-    for ( ; i < tokenList.size(); ++i )
+    int clientId = atoi( tokenList[ 0 ].c_str() );;
+
+    // Extract the command & identifier.
+    if( tokenList.size() > 1 )
     {
-      // Extract the command & identifier.
-      int identifier = atoi( tokenList[ i++ ].c_str() );
+      int identifier = atoi( tokenList[ 1 ].c_str() );
 
       // Find the entity.
       entity_t* e = m_model->Get( identifier );
       if ( e )
       {
         vector2_t d( 0, 0 );
-        if( i < tokenList.size() )
+        if( tokenList.size() > 2 )
         {
-          if ( strstr( tokenList[ i ].c_str(), "left" ) != nullptr )
+          if ( strstr( tokenList[ 2 ].c_str(), "left" ) != nullptr )
           {
             d.x -= 1.0f;
           }
-          if ( strstr( tokenList[ i ].c_str(), "right" ) != nullptr )
+          if ( strstr( tokenList[ 2 ].c_str(), "right" ) != nullptr )
           {
             d.x += 1.0f;
           }
-          if ( strstr( tokenList[ i ].c_str(), "up" ) != nullptr )
+          if ( strstr( tokenList[ 2 ].c_str(), "up" ) != nullptr )
           {
-            d.y += 1.0f;;
+            d.y += 1.0f;
           }
-          if ( strstr( tokenList[ i ].c_str(), "down" ) != nullptr )
+          if ( strstr( tokenList[ 2 ].c_str(), "down" ) != nullptr )
           {
             d.y -= 1.0f;
           }

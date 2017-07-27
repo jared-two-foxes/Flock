@@ -55,35 +55,3 @@ PlayerController::SetBinding( PlayerAction action_, Nebulae::KeyCode key_ )
   binding.action = action_;
   binding.key = key_;
 }
-
-
-
-//vector2_t
-//PlayerController::GetDirectionFromCommand( const std::string& cmd )
-//{
-//  vector2_t d( 0, 0 );
-//
-//  if ( std::strstr( cmd.c_str(), "left" ) != nullptr )
-//  {
-//    d.x -= 1.0f;
-//  }
-//  if ( std::strstr( cmd.c_str(), "right" ) != nullptr )
-//  {
-//    d.x += 1.0f;
-//  }
-//  if ( std::strstr( cmd.c_str(), "up" ) != nullptr )
-//  {
-//    d.y += 1.0f;
-//  }
-//  if ( std::strstr( cmd.c_str(), "down" ) != nullptr )
-//  {
-//    d.y -= 1.0f;
-//  }
-//
-//  if ( d.x > 0 || d.y > 0 )
-//  {
-//    return Normalize( d );
-//  }
-//
-//  return d;
-//}

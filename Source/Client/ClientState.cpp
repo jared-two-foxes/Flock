@@ -448,15 +448,15 @@ ClientState::CreateClientMessage()
       {
         command += ",left";
       }
-      else if ( action == PlayerAction::RIGHT )
+      if ( action == PlayerAction::RIGHT )
       {
         command += ",right";
       }
-      else if ( action == PlayerAction::UP )
+      if ( action == PlayerAction::UP )
       {
         command += ",up";
       }
-      else if ( action == PlayerAction::DOWN )
+      if ( action == PlayerAction::DOWN )
       {
         command += ",down";
       }
@@ -492,31 +492,31 @@ ClientState::ProcessClientMessage( const std::string& msg )
   // First token is going to be our own identifier
   NE_ASSERT( atoi( list[ 0 ].c_str() ) == m_clientId, "Client message appears to be in an incorrect format" )( msg );
 
-  int i = 1;
-  for ( ; i < list.size(); ++i )
+  if( list.size() > 1 )
   {
     // Find the entity.
-    int id = atoi( list[ i++ ].c_str() );
+    int id = atoi( list[ 1 ].c_str() );
 
+    // Process the directional information.
     auto it = std::find_if( m_entities.begin(), m_entities.end(), [ & ]( entity_t& e ) { return ( e.identifier == id ); } );
     if ( it != m_entities.end() )
     {
       vector2_t d( 0, 0 );
-      if( i < list.size() )
+      if( list.size() > 2 )
       {
-        if ( strstr( list[ i ].c_str(), "left" ) != nullptr )
+        if ( strstr( list[ 2 ].c_str(), "left" ) != nullptr )
         {
           d.x -= 1.0f;
         }
-        if ( strstr( list[ i ].c_str(), "right" ) != nullptr )
+        if ( strstr( list[ 2 ].c_str(), "right" ) != nullptr )
         {
           d.x += 1.0f;
         }
-        if ( strstr( list[ i ].c_str(), "up" ) != nullptr )
+        if ( strstr( list[ 2 ].c_str(), "up" ) != nullptr )
         {
           d.y += 1.0f;;
         }
-        if ( strstr( list[ i ].c_str(), "down" ) != nullptr )
+        if ( strstr( list[ 2 ].c_str(), "down" ) != nullptr )
         {
           d.y -= 1.0f;
         }
@@ -612,13 +612,12 @@ ClientState::TrySendClientUpdate()
         NE_ASSERT( command.length() < 128, "Client message is larger than Request buffer." )( );
 
         // Compose the message to ssend.
-        zmq::message_t request( 128 );
+        zmq::message_t request( command.length() );
         memcpy( request.data(), command.c_str(), command.length() );
 
         // Attempt to send command to server.
         if ( serverSocket->send( request, ZMQ_NOBLOCK ) )
         {
-          ProcessClientMessage( command );
           m_lastCommand = command;
           state++;
         }
@@ -632,6 +631,7 @@ ClientState::TrySendClientUpdate()
       if ( serverSocket->recv( &reply, ZMQ_NOBLOCK ) )
       {
         // @todo - should probably only set the direction at this point.  
+        ProcessClientMessage( m_lastCommand );
         // @todo - should send message with a timestamp and account for time difference for motion on the server?
         state = 0;
       }

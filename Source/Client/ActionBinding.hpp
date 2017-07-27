@@ -6,9 +6,13 @@
 enum class PlayerAction
 { 
   LEFT,
+  LEFT_UP,
+  UP, 
+  RIGHT_UP,
   RIGHT,
-  UP,
+  RIGHT_DOWN,
   DOWN,
+  LEFT_DOWN
 };
 
 struct KeyBinding
