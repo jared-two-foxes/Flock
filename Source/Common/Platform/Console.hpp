@@ -1,24 +1,30 @@
-#ifndef CONSOLE_H__
-#define CONSOLE_H__
+#ifndef FLOCK_COMMON_CONSOLE_H__
+#define FLOCK_COMMON_CONSOLE_H__
 
 #if defined(WIN32)
 #define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
 
-namespace Console
+
+struct console_t
+///
+///
+///
 {
+  HANDLE handle;
+  CONSOLE_CURSOR_INFO cursor;
+  CONSOLE_SCREEN_BUFFER_INFO screen_info;
+};
 
-	void Init();
+console_t Create();
 
-  void Clear( char fill = ' ' );
+void Clear( console_t& console, char fill = ' ' );
 
-  void SetCursorVisible( bool bVisible );
+void SetCursorVisible( console_t& console, bool bVisible );
 
-  void SetCursorPosition( COORD& coord );
-
-  void GetScreenBufferInfo( CONSOLE_SCREEN_BUFFER_INFO* pScreenBufferInfo );
+void SetCursorPosition( console_t& console, COORD& coord );
+COORD GetCursorPosition( console_t& console );
   
-}
-
-#endif // CONSOLE_H__
+#endif // FLOCK_COMMON_CONSOLE_H__

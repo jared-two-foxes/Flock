@@ -3,8 +3,6 @@
 
 #include <strsafe.h>
 
-HANDLE g_handle;
-CONSOLE_CURSOR_INFO g_Cursor;
   
 void ErrorExit( LPTSTR lpszFunction ) 
 { 
@@ -39,39 +37,75 @@ void ErrorExit( LPTSTR lpszFunction )
     ExitProcess(dw); 
 }
 
-void 
-Console::Init()
+console_t
+Create()
 {
- 	g_handle = GetStdHandle( STD_OUTPUT_HANDLE );
-  if( g_handle == INVALID_HANDLE_VALUE ) 
+  HANDLE handle_ = GetStdHandle( STD_OUTPUT_HANDLE );
+  if( handle_ == INVALID_HANDLE_VALUE )
   {
-    ErrorExit( L"Console::Init" );
+    AllocConsole();
+    handle_ = GetStdHandle( STD_OUTPUT_HANDLE );
+    if( handle_ == INVALID_HANDLE_VALUE )
+    {
+      //ErrorExit( L"Console::Init" );
+    }
   }
 
-  bool ret = GetConsoleCursorInfo( g_handle, &g_Cursor );
+  bool ret;
+  CONSOLE_CURSOR_INFO cursor_;
+  ret = GetConsoleCursorInfo( handle_, &cursor_ );
   if( !ret ) 
   {
     ErrorExit( L"Console::Init" );
   }
+
+  CONSOLE_SCREEN_BUFFER_INFO screenBufferInfo_;
+  ret = GetConsoleScreenBufferInfo( handle_, &screenBufferInfo_ );
+  if ( !ret )
+  {
+    ErrorExit( L"Console::GetScreenBufferInfo" );
+  }
+
+  console_t console;
+  console.handle = handle_;
+  console.cursor = cursor_;
+  console.screen_info = screenBufferInfo_;
+
+  return console;
 }
 
 void 
-Console::Clear( char fill ) 
+Clear( console_t& console, char fill )
 { 
+  bool ret;
+  
   COORD tl = {0,0};
-	CONSOLE_SCREEN_BUFFER_INFO s;
-	GetConsoleScreenBufferInfo( g_handle, &s );
-	DWORD written, cells = s.dwSize.X * s.dwSize.Y;
-	FillConsoleOutputCharacter( g_handle, fill, cells, tl, &written );
-	FillConsoleOutputAttribute( g_handle, s.wAttributes, cells, tl, &written );
-	SetConsoleCursorPosition( g_handle, tl );
+	DWORD written, cells = console.screen_info.dwSize.X * console.screen_info.dwSize.Y;
+	
+  ret = FillConsoleOutputCharacter( console.handle, fill, cells, tl, &written );
+  if ( !ret )
+  {
+    ErrorExit( L"FillConsoleOutputCharacter" );
+  }
+
+	ret = FillConsoleOutputAttribute( console.handle, console.screen_info.wAttributes, cells, tl, &written );
+  if ( !ret )
+  {
+    ErrorExit( L"FillConsoleOutputAttribute" );
+  }
+
+	ret = SetConsoleCursorPosition( console.handle, tl );
+  if ( !ret )
+  {
+    ErrorExit( L"SetConsoleCursorPosition" );
+  }
 }
 
 void 
-Console::SetCursorVisible( bool bVisible ) 
+SetCursorVisible( console_t& console, bool bVisible )
 {
-  g_Cursor.bVisible = bVisible;
-  bool bRet = SetConsoleCursorInfo( g_handle, &g_Cursor );
+  console.cursor.bVisible = bVisible;
+  bool bRet = SetConsoleCursorInfo( console.handle, &console.cursor );
   if( !bRet ) 
   {
     ErrorExit( L"Console::SetCursorVisible" );
@@ -79,21 +113,27 @@ Console::SetCursorVisible( bool bVisible )
 }
 
 void
-Console::SetCursorPosition( COORD& coord ) 
+SetCursorPosition( console_t& console, COORD& coord )
 {
-  bool ret = SetConsoleCursorPosition( g_handle, coord );
+  bool ret = SetConsoleCursorPosition( console.handle, coord );
   if( !ret ) 
   {
     ErrorExit( L"Console::SetCursorPosition" );
   }
 }
 
-void
-Console::GetScreenBufferInfo( CONSOLE_SCREEN_BUFFER_INFO* pScreenBufferInfo )
+COORD 
+GetCursorPosition( console_t& console )
 {
-  bool ret = GetConsoleScreenBufferInfo( g_handle, pScreenBufferInfo );
-  if( !ret ) 
+  bool ret; 
+
+  // Update the screen info.
+  ret = GetConsoleScreenBufferInfo( console.handle, &console.screen_info );
+  if ( !ret )
   {
     ErrorExit( L"Console::GetScreenBufferInfo" );
   }
+
+  // Return the current cursor position.
+  return console.screen_info.dwCursorPosition;
 }

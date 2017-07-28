@@ -1,5 +1,8 @@
 
 #include "ClientState.hpp"
+#include "ActionBinding.hpp"
+#include "PlayerController.hpp"
+#include "DrawingHelper.hpp"
 
 #include <Nebulae/Beta/Camera/Camera.h>
 #include <Nebulae/Beta/StateStack/StateStack.h>
@@ -13,198 +16,61 @@
 
 #include <Brofiler.h>
 
+#include <boost/tokenizer.hpp>
+
 #include <iostream>
 #include <sstream>
 
 
 using namespace Nebulae;
 
-int identifier = -1;
-volatile bool ready = false;
+static float fps = 0;
 
-ClientState::KeyBinding bindings[][ 4 ] =
+KeyBinding bindings[][ 4 ] =
 {
   {
-    { Nebulae::VKC_LEFT, ClientState::INPUT_ACTION_LEFT },
-    { Nebulae::VKC_RIGHT, ClientState::INPUT_ACTION_RIGHT },
-    { Nebulae::VKC_UP, ClientState::INPUT_ACTION_UP },
-    { Nebulae::VKC_DOWN, ClientState::INPUT_ACTION_DOWN }
+    { Nebulae::VKC_LEFT, PlayerAction::LEFT },
+    { Nebulae::VKC_RIGHT, PlayerAction::RIGHT },
+    { Nebulae::VKC_UP, PlayerAction::UP },
+    { Nebulae::VKC_DOWN, PlayerAction::DOWN }
   },
   {
-    { Nebulae::VKC_A, ClientState::INPUT_ACTION_LEFT },
-    { Nebulae::VKC_D, ClientState::INPUT_ACTION_RIGHT },
-    { Nebulae::VKC_W, ClientState::INPUT_ACTION_UP },
-    { Nebulae::VKC_S, ClientState::INPUT_ACTION_DOWN }
+    { Nebulae::VKC_A, PlayerAction::LEFT },
+    { Nebulae::VKC_D, PlayerAction::RIGHT },
+    { Nebulae::VKC_W, PlayerAction::UP },
+    { Nebulae::VKC_S, PlayerAction::DOWN }
   }
 };
 
-
-std::size_t
-DrawCircle( const vector2_t& p, float r, int num_segments, const vector4_t& d, std::vector<float >* vertices )
-// GL_LINE_LOOP
-{
-  float theta = 2 * 3.1415926f / float( num_segments );
-  float c = cosf( theta );//precalculate the sine and cosine
-  float s = sinf( theta );
-  float t;
-
-  float x = r; //we start at angle = 0 
-  float y = 0;
-
-  std::size_t i = 0, ii = 0;
-
-  // To create using a triangle fan.
-  ( *vertices )[ i++ ] = p.x;
-  ( *vertices )[ i++ ] = p.y;
-  ( *vertices )[ i++ ] = d.x;
-  ( *vertices )[ i++ ] = d.y;
-  ( *vertices )[ i++ ] = d.z;
-  ( *vertices )[ i++ ] = d.w;
-
-  for ( ; ii < num_segments + 1; ii++ )
-  {
-    // Output vertex 
-    ( *vertices )[ i++ ] = x + p.x;
-    ( *vertices )[ i++ ] = y + p.y;
-
-    // Output colour
-    ( *vertices )[ i++ ] = d.x;
-    ( *vertices )[ i++ ] = d.y;
-    ( *vertices )[ i++ ] = d.z;
-    ( *vertices )[ i++ ] = d.w;
-
-    //apply the rotation matrix
-    t = x;
-    x = c * x - s * y;
-    y = s * t + c * y;
-  }
-
-  return ( ii + 1 );
-}
-
-
-std::size_t
-DrawArrow( const vector2_t& p, const vector2_t& dir, float r, const vector4_t& d, std::vector<float >* vertices )
-// GL_TRIANGLES
-{
-  vector2_t offsets[] = { {0,r}, {0,-r}, {r,-r}, {0,r}, {-r,-r}, {0,-r} };
-
-  static vector2_t up( 0.0f, 1.0f ), left( 1.0f, 0 );
-  float perp_dot = Dot( left, dir );
-  float dot = Dot( up, dir );
-  float a = atan2( perp_dot, dot );
-  float c = cosf( a );
-  float s = sinf( a );
-  matrix2_t rot ( c, -s, s, c );
-  
-  std::size_t i = 0, ii = 0;
-  for ( ; ii < 6; ++ii )
-  {
-    vector2_t off = rot * offsets[ ii ];
-
-    ( *vertices )[ i++ ] = p.x + off.x;
-    ( *vertices )[ i++ ] = p.y + off.y;
-    ( *vertices )[ i++ ] = d.x;
-    ( *vertices )[ i++ ] = d.y;
-    ( *vertices )[ i++ ] = d.z;
-    ( *vertices )[ i++ ] = d.w;
-  }
-
-  return ii;
-}
-
-
-void Thread()
-{
-  zmq::context_t context( 1 );
-  zmq::socket_t subscriber( context, ZMQ_SUB );
-  zmq::socket_t reply( context, ZMQ_REP );
-
-  try
-  {
-    reply.bind( "tcp://*:5558" );
-
-    subscriber.connect( "tcp://localhost:5556" );
-
-    // Setting subscription to all events. Argument is not currently supported, server doesnt push a identifier yet.
-    const char* filter = ""; //( argc > 1 ) ? argv[1] : "";
-    subscriber.setsockopt( ZMQ_SUBSCRIBE, filter, strlen( filter ) );
-
-    // Set the subscriber socket to only keep the most recent message, dont care about any other messages.
-    int conflate = 1;
-    subscriber.setsockopt( ZMQ_CONFLATE, &conflate, sizeof( conflate ) );
-  }
-  catch ( zmq::error_t& e )
-  {
-    std::cout << e.what();
-  }
-
-  zmq::message_t update;
-  ready = true;
-
-  while ( 1 )
-  {
-    try
-    {
-      // Check if there is a new server subscription message.
-      zmq::message_t next;
-      if ( subscriber.recv( &next, ZMQ_NOBLOCK ) )
-      {
-        // Only store this update if it has data.
-        if ( next.size() > 0 )
-        {
-          update = std::move( next );
-        }
-      }
-    }
-    catch ( zmq::error_t& e )
-    {
-      std::cout << e.what();
-    }
-
-    try
-    {
-      // Check if we were asked for an update.
-      zmq::message_t request;
-      if ( reply.recv( &request, ZMQ_NOBLOCK ) )
-      {
-        reply.send( update );
-      }
-    }
-    catch ( zmq::error_t& e )
-    {
-      std::cout << e.what();
-    }
-  }
-}
 
 
 ClientState::ClientState() :
   State( "Client" ),
   m_pCamera( NULL ),
-  m_lastDirection( 0.0f, 1.0f ),
   context( std::make_unique<zmq::context_t>( 1 ) ),
-  localSocket( std::make_unique<zmq::socket_t>( *context, ZMQ_REQ ) ),
+  subscriberSocket( std::make_unique<zmq::socket_t>( *context, ZMQ_SUB ) ),
   serverSocket( std::make_unique<zmq::socket_t>( *context, ZMQ_REQ ) ),
-  m_lag( 0 ),
-  m_lastCommand( "" )
+  m_lag( 0 )
 {
-  AllocConsole();
+  m_console = Create();
   freopen( "CONOUT$", "w", stdout );
   freopen( "CONOUT$", "w", stderr );
 }
 
 
 ClientState::~ClientState()
-{}
+{
+  for ( PlayerController* player : m_players )
+  {
+    delete player;
+  }
+  m_players.clear();
+}
 
 
 void
 ClientState::Enter( Nebulae::StateStack* caller )
 {
-  m_fetch_thread = std::thread( Thread );
-  while ( !ready ); //Wait until we are ready to go.
-
   // Grab Application variables to help with setup.
   m_pRenderSystem = caller->GetRenderSystem();
 
@@ -280,39 +146,9 @@ ClientState::Enter( Nebulae::StateStack* caller )
 
 
   // Setup the socket connections to the local socket for grabing server Updates.
-  try
-  {
-    localSocket->connect( "tcp://localhost:5558" );
-  }
-  catch ( zmq::error_t e )
-  {
-    std::cout << e.what() << std::endl;
-  }
-
-  // Setup the socket connection to the server for user input.
-  try
-  {
-    serverSocket->connect( "tcp://localhost:5555" );
-
-    // Let the server know that we have connected!
-    zmq::message_t message( 20 );
-    snprintf( ( char * ) message.data(), 20, "new" );
-    serverSocket->send( message );
-
-    zmq::message_t reply;
-    serverSocket->recv( &reply ); //< blocking
-
-    //@todo check that the reply is an int for the identifier.
-    std::istringstream iss( static_cast< char* >( reply.data() ) );
-    iss >> identifier;
-  }
-  catch ( zmq::error_t e )
-  {
-    std::cout << e.what() << std::endl;
-  }
+  SetupServerSocket();
 
   // Register ourselves as an inputlistener.
-  SetBinding( 0 );
   caller->AddInputListener( this );
 }
 
@@ -327,22 +163,12 @@ ClientState::Update( float fDeltaTimeStep, Nebulae::StateStack* pCaller )
 {
   BROFILER_CATEGORY( "ClientState::Update", Profiler::Color::AliceBlue );
 
-  SendClientUpdate();
+  TrySendClientUpdate();
 
   if ( !TryServerUpdate() )
   {
     // The server update hasn't completed yet, simulate this frame.
     SimulateStep( fDeltaTimeStep );
-  }
-
-  // Check the direction and update if required.
-  auto it = std::find_if( entities.begin(), entities.end(), [ & ]( entity_t& e ) { return ( e.identifier == identifier ); } );
-  if ( it != entities.end() )
-  {
-    if ( LengthSq( it->direction ) > 0.001f )
-    {
-      m_lastDirection = it->direction;
-    }
   }
 }
 
@@ -358,7 +184,6 @@ ClientState::Render() const
     _last_frame_time = std::chrono::high_resolution_clock::now();
   static int _frame_count = 0;
   static float frame_delta = 0;
-  static float fps = 0;
 
   auto now = std::chrono::high_resolution_clock::now();
   frame_delta = std::chrono::duration<float, std::milli >( now - _last_frame_time ).count();
@@ -426,21 +251,23 @@ ClientState::Render() const
 
   // Draw Entities.
   std::vector<float > vertices( 64 * 6 );
-  for ( auto& e : entities )
+  for ( auto& e : m_entities )
   {
     std::size_t count = 0;
 
     // Reset the Entity buffer for this entity.
     if ( e.player )
     {
-      vector4_t colour = ( e.identifier == identifier ) ? vector4_t( 0, 1.0f, 0, 1.0f ) : vector4_t( 0, 0, 1.0f, 1.0f );
+      auto it = std::find_if( m_players.begin(), m_players.end(), [ & ]( PlayerController* controller ) { return ( controller->Identifier() == e.identifier ); } );
+      NE_ASSERT( it != m_players.end(), "Unable to find controller for player entities" )( );
 
-      count = DrawArrow( e.position, m_lastDirection, e.radius, colour, &vertices );
+      vector4_t colour( 0, 1.0f, 0, 1.0f );
+      count = DrawingHelper::DrawArrow( e.position, e.direction, e.radius, colour, &vertices );
     }
     else
     {
       vector4_t colour( 1.0f, 0.0f, 0.0f, 1.0f );
-      count = DrawCircle( e.position, e.radius, 32, colour, &vertices );
+      count = DrawingHelper::DrawCircle( e.position, e.radius, 32, colour, &vertices );
     }
 
     HardwareBuffer* pBuffer = m_pRenderSystem->FindBufferByName( "EntitiesBuffer" );
@@ -470,31 +297,11 @@ ClientState::Render() const
 
 
 void
-ClientState::SetBinding( int variant )
-{
-  m_inputBindings.push_back( bindings[ variant ][ 0 ] );
-  m_inputBindings.push_back( bindings[ variant ][ 1 ] );
-  m_inputBindings.push_back( bindings[ variant ][ 2 ] );
-  m_inputBindings.push_back( bindings[ variant ][ 3 ] );
-}
-
-
-void
 ClientState::KeyPressed( Nebulae::KeyCode keyCode, uint32 key_code_point, Nebulae::Flags<Nebulae::ModKey> modKeys )
 {
-  // Iterate the keybindings to see if this keypress should do anything.
-  auto it = std::find_if( m_inputBindings.begin(), m_inputBindings.end(), [ & ]( KeyBinding& binding ) {
-    return ( binding.key == keyCode );
-  } );
-
-  if ( it != m_inputBindings.end() )
+  for ( PlayerController* controller : m_players )
   {
-    // Only add the action into the active actions list so long as its not already pressed.
-    auto j = std::find( m_activeActions.begin(), m_activeActions.end(), it->action );
-    if ( j == m_activeActions.end() )
-    {
-      m_activeActions.push_back( it->action );
-    }
+    controller->KeyPressed( keyCode, key_code_point, modKeys );
   }
 }
 
@@ -502,100 +309,237 @@ ClientState::KeyPressed( Nebulae::KeyCode keyCode, uint32 key_code_point, Nebula
 void
 ClientState::KeyReleased( Nebulae::KeyCode keyCode, uint32 key_code_point, Nebulae::Flags<Nebulae::ModKey> modKeys )
 {
-  if ( keyCode == Nebulae::VKC_1 )
+  if ( m_players.empty() && keyCode > Nebulae::KeyCode::VKC_0 && keyCode <= Nebulae::KeyCode::VKC_9 )
   {
-    SetBinding( 0 );
-    m_activeActions.clear();
-    m_lastCommand = "";
+    int generatePlayers = keyCode - Nebulae::KeyCode::VKC_0;
+    TryCreatePlayers( generatePlayers );
   }
-  else if ( keyCode == Nebulae::VKC_2 )
-  {
-    SetBinding( 1 );
-    m_activeActions.clear();
-    m_lastCommand = "";
-  }
-  else
-  {
-    // Iterate the keybindings to see if this keypress maps to anything.
-    auto it = std::find_if( m_inputBindings.begin(), m_inputBindings.end(), [ & ]( KeyBinding& binding ) {
-      return ( binding.key == keyCode );
-    } );
 
-    // If found remove from the action queue.
-    if ( it != m_inputBindings.end() )
-    {
-      m_activeActions.erase( std::remove( m_activeActions.begin(), m_activeActions.end(), it->action ) );
-    }
+  for ( PlayerController* controller : m_players )
+  {
+    controller->KeyReleased( keyCode, key_code_point, modKeys );
+  }
+}
+
+
+void
+ClientState::SetupServerSocket()
+{
+  try
+  {
+    subscriberSocket->connect( "tcp://localhost:5556" );
+  
+    // Setting subscription to all events. Argument is not currently supported, server doesnt push an identifier yet.
+    const char* filter = ""; //( argc > 1 ) ? argv[1] : "";
+    subscriberSocket->setsockopt( ZMQ_SUBSCRIBE, filter, strlen( filter ) );
+  
+    // Set the subscriber socket to only keep the most recent message, dont care about any other messages.
+    int conflate = 1;
+    subscriberSocket->setsockopt( ZMQ_CONFLATE, &conflate, sizeof( conflate ) );
+  }
+  catch ( zmq::error_t e )
+  {
+    std::cout << e.what() << std::endl;
+  }
+
+
+  // Setup the socket connection to the server for user input.
+  try
+  {
+    serverSocket->connect( "tcp://localhost:5555" );
+
+    // Let the server know that we have connected!
+    zmq::message_t message( 20 );
+    snprintf( ( char * ) message.data(), 20, "join" );
+    serverSocket->send( message );
+
+    zmq::message_t reply;
+    serverSocket->recv( &reply ); //< blocking
+
+                                  //@todo Check that the reply is an int for the client identifier.
+    std::istringstream iss( static_cast< char* >( reply.data() ) );
+    iss >> m_clientId;
+  }
+  catch ( zmq::error_t e )
+  {
+    std::cout << e.what() << std::endl;
   }
 }
 
 
 std::string
-ClientState::GetCurrentCommand() const
+ClientState::CreateClientMessage()
 {
-  std::string command( "" );
+  std::string msg;
+  msg += std::to_string( m_clientId );
 
-  for ( auto action : m_activeActions )
+  // Build the client update message.
+  for ( PlayerController* controller : m_players )
   {
-    if ( action == INPUT_ACTION_LEFT )
+    const std::vector<PlayerAction >& actions = controller->ActiveActions();
+
+    // Create the client->server message for this controller.
+    std::string command;
+    for ( auto action : actions )
     {
-      command += ",left";
+      if ( action == PlayerAction::LEFT )
+      {
+        command += ",left";
+      }
+      if ( action == PlayerAction::RIGHT )
+      {
+        command += ",right";
+      }
+      if ( action == PlayerAction::UP )
+      {
+        command += ",up";
+      }
+      if ( action == PlayerAction::DOWN )
+      {
+        command += ",down";
+      }
     }
-    else if ( action == INPUT_ACTION_RIGHT )
+
+    if ( command.size() >= 1 )
     {
-      command += ",right";
+      command.erase( 0, 1 ); //< pop off the front ',' character
     }
-    else if ( action == INPUT_ACTION_UP )
-    {
-      command += ",up";
-    }
-    else if ( action == INPUT_ACTION_DOWN )
-    {
-      command += ",down";
-    }
+
+    msg += " ";
+    msg += std::to_string( controller->Identifier() );
+    msg += " ";
+    msg += command;
   }
 
-  if ( command.size() >= 1 )
-  {
-    command.erase( 0, 1 ); //< pop off the front ',' character
-  }
-
-  return command;
+  return msg;
 }
 
-
-vector2_t
-ClientState::GetDirectionFromCommand( const std::string& cmd )
-{
-  vector2_t d( 0, 0 );
-
-  if ( std::strstr( cmd.c_str(), "left" ) != nullptr )
-  {
-    d.x -= 1.0f;
-  }
-  if ( std::strstr( cmd.c_str(), "right" ) != nullptr )
-  {
-    d.x += 1.0f;
-  }
-  if ( std::strstr( cmd.c_str(), "up" ) != nullptr )
-  {
-    d.y += 1.0f;
-  }
-  if ( std::strstr( cmd.c_str(), "down" ) != nullptr )
-  {
-    d.y -= 1.0f;
-  }
-
-  if ( d.x > 0 || d.y > 0 )
-  {
-    return Normalize( d );
-  }
-
-  return d;
-}
 
 void
-ClientState::SendClientUpdate()
+ClientState::ProcessClientMessage( const std::string& msg )
+{
+  boost::char_separator<char> sep( " " );
+  boost::tokenizer<boost::char_separator<char> > tokens( msg, sep );
+
+  std::vector<std::string > list;
+  for ( auto it = tokens.begin(); it != tokens.end(); ++it )
+  {
+    list.push_back( *it );
+  }
+
+  // First token is going to be our own identifier
+  NE_ASSERT( atoi( list[ 0 ].c_str() ) == m_clientId, "Client message appears to be in an incorrect format" )( msg );
+
+  if( list.size() > 1 )
+  {
+    for ( std::size_t i = 1, n = list.size(); i < n; )
+    {
+      // Find the entity.
+      int id = atoi( list[ i++ ].c_str() );
+
+      // Process the directional information.
+      auto it = std::find_if( m_entities.begin(), m_entities.end(), [ & ]( entity_t& e ) { return ( e.identifier == id ); } );
+      if ( it != m_entities.end() )
+      {
+        vector2_t d( 0, 0 );
+        if( i < n )
+        {
+          if ( strstr( list[ i ].c_str(), "left" ) != nullptr )
+          {
+            d.x -= 1.0f;
+          }
+          if ( strstr( list[ i ].c_str(), "right" ) != nullptr )
+          {
+            d.x += 1.0f;
+          }
+          if ( strstr( list[ i ].c_str(), "up" ) != nullptr )
+          {
+            d.y += 1.0f;
+          }
+          if ( strstr( list[ i ].c_str(), "down" ) != nullptr )
+          {
+            d.y -= 1.0f;
+          }
+        }
+
+        if ( d.x > 0 || d.y > 0 )
+        {
+          d = Normalize( d );
+        }
+
+        it->direction = d;
+      }
+
+      i++;
+    }
+  }
+}
+
+
+void
+ClientState::TryCreatePlayers( int count )
+///
+/// @todo Make non-blocking?
+///
+{
+  // Setup the socket connection to the server for user input.
+  try
+  {
+    // Let the server know that we have connected!
+    zmq::message_t message( 20 );
+    snprintf( ( char * ) message.data(), 20, "create %d", count );
+    serverSocket->send( message );
+
+    zmq::message_t reply;
+    if ( serverSocket->recv( &reply ) ) //< blocking
+    {
+      char replyBuffer[32];
+      memset( replyBuffer, 0, 32 );
+      memcpy( replyBuffer, reply.data(), reply.size() );
+      replyBuffer[reply.size()] = 0;
+
+      // Check that the reply is a success code and extract the player identifiers.
+      std::string str( replyBuffer );
+      boost::char_separator<char> sep( " " );
+      boost::tokenizer<boost::char_separator<char> > tokens( str, sep );
+
+      std::vector<std::string > tokenList;
+      for ( auto it = tokens.begin(); it != tokens.end(); ++it )
+      {
+        tokenList.push_back( *it );
+      }
+
+      const int OK = 0;
+      if ( tokenList[ 0 ] != "OK" )
+      {
+        //@todo handle the failure?
+      }
+      else
+      {
+        for ( int i = 1; i < tokenList.size(); ++i )
+        {
+          PlayerController* controller = new PlayerController( atoi( tokenList[ i ].c_str() ) );
+
+          std::size_t variant = m_players.size();
+          controller->SetBinding( bindings[ variant ][ 0 ].action, bindings[ variant ][ 0 ].key );
+          controller->SetBinding( bindings[ variant ][ 1 ].action, bindings[ variant ][ 1 ].key );
+          controller->SetBinding( bindings[ variant ][ 2 ].action, bindings[ variant ][ 2 ].key );
+          controller->SetBinding( bindings[ variant ][ 3 ].action, bindings[ variant ][ 3 ].key );
+
+          m_players.push_back( controller );
+        }
+      }
+    }
+  }
+  catch ( zmq::error_t e )
+  {
+    std::cout << e.what() << std::endl;
+  }
+}
+
+
+void
+ClientState::TrySendClientUpdate()
 ///
 /// Attempt to send the Server a update message containing any relevant player information 
 /// which should result in the player changing behaviour in the server's simulation of the 
@@ -606,24 +550,22 @@ ClientState::SendClientUpdate()
 
   static int state = 0;
 
-  auto it = std::find_if( entities.begin(), entities.end(), []( entity_t& e ) { return e.identifier == identifier; } )
-    NE_ASSERT( it != entities.end(), "Unable to find the player entity" )( identifier );
-
   try
   {
     if ( state == 0 )
     {
-      std::string command = GetCurrentCommand();
+      std::string command = CreateClientMessage();
       if ( command != m_lastCommand )
       {
-        // Compose the message to send.
-        zmq::message_t request( 32 );
-        snprintf( ( char * ) request.data(), 32, "%05d%s", identifier, command.c_str() );
+        NE_ASSERT( command.length() < 128, "Client message is larger than Request buffer." )( );
+
+        // Compose the message to ssend.
+        zmq::message_t request( command.length() );
+        memcpy( request.data(), command.c_str(), command.length() );
 
         // Attempt to send command to server.
         if ( serverSocket->send( request, ZMQ_NOBLOCK ) )
         {
-          it->direction = GetDirectionFromCommand( command );
           m_lastCommand = command;
           state++;
         }
@@ -637,6 +579,7 @@ ClientState::SendClientUpdate()
       if ( serverSocket->recv( &reply, ZMQ_NOBLOCK ) )
       {
         // @todo - should probably only set the direction at this point.  
+        ProcessClientMessage( m_lastCommand );
         // @todo - should send message with a timestamp and account for time difference for motion on the server?
         state = 0;
       }
@@ -666,34 +609,18 @@ ClientState::TryServerUpdate()
   {
     zmq::message_t update;
 
-    // Request an update from the local listener socket.
-    if ( state == 0 )
+    // Check if there is a new server subscription message.
+    if ( subscriberSocket->recv( &update, ZMQ_NOBLOCK ) )
     {
-      zmq::message_t request( 1 );
-      if ( localSocket->send( request, ZMQ_NOBLOCK ) )
+      // Only store this update if it has data.
+      if ( update.size() > 0 )
       {
         state++;
       }
     }
 
-    // Receive the Server update.
-    if ( state == 1 )
-    {
-      if ( localSocket->recv( &update, ZMQ_NOBLOCK ) )
-      {
-        if ( update.size() > 0 )
-        {
-          state++;
-        }
-        else
-        {
-          state = 0; //< update received didnt contain any information, disregard and start again.
-        }
-      }
-    }
-
     // Process retrieved server data.
-    if ( state == 2 )
+    if ( state == 1 )
     {
       int list_size;
       long long timestamp;
@@ -702,9 +629,9 @@ ClientState::TryServerUpdate()
       memcpy( &timestamp, data_ptr, sizeof( long long ) );
       assert( update.size() >= sizeof( long long ) + sizeof( int ) );
       memcpy( &list_size, data_ptr + sizeof( long long ), sizeof( int ) );
-      entities.resize( list_size );
+      m_entities.resize( list_size );
       assert( update.size() >= sizeof( long long ) + sizeof( int ) + list_size * sizeof( entity_t ) );
-      memcpy( &entities[ 0 ], data_ptr + sizeof( long long ) + sizeof( int ), list_size * sizeof( entity_t ) ); //< Smash over the top all entities with info from server.
+      memcpy( &m_entities[ 0 ], data_ptr + sizeof( long long ) + sizeof( int ), list_size * sizeof( entity_t ) ); //< Smash over the top all entities with info from server.
 
       assert( last_server_time < timestamp );
       last_server_time = timestamp;
@@ -721,6 +648,7 @@ ClientState::TryServerUpdate()
 
       // Reset the state so that we start the process over.
       state = 0;
+      PrintToConsole();
 
       return true;
     }
@@ -737,12 +665,32 @@ ClientState::TryServerUpdate()
   return false;
 }
 
+
 void
 ClientState::SimulateStep( float fDeltaTimeStep )
+///
+/// Attempt to simulate the movement based upon the last known directions
+///
 {
-  // Attempt to simulate the movement based upon the last known directions
-  for ( auto& e : entities )
+  for ( auto& e : m_entities )
   {
     e.position = e.position + e.direction * e.speed * fDeltaTimeStep;
   }
+}
+
+
+
+void
+ClientState::PrintToConsole() 
+{
+  // First clear the current contents.
+  Clear( m_console );
+
+  std::cout << "Client " << "-v 1.0.0" << std::endl;
+  std::cout << "--------------------------------------------------------" << std::endl;
+  //std::cout << "Uptime (s): " << duration<float >( high_resolution_clock::now() - _open ).count() << std::endl;
+  std::cout << "Frame Rate: " << std::to_string( fps ) << std::endl;
+  std::cout << "Lag (ms): " << std::to_string( m_lag ) << std::endl;
+  std::cout << "Entities: " << m_entities.size() << std::endl;
+  //std::cout << "Timestamp: " << _last.time_since_epoch().count() << std::endl;
 }

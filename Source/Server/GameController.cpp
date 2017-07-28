@@ -30,7 +30,7 @@ GameController::AddPlayer()
     player->radius = 2.5f;
     player->position = spawn_points[m_players.size()];
     player->direction = vector2_t( 0, 0 );
-    player->speed = 3.0f;
+    player->speed = 10.0f;
     player->player = true;
 
     m_players.push_back( player->identifier );

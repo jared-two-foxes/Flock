@@ -12,9 +12,13 @@ int main( int argc, char* argv[] )
   Server server( &model, &controller );
   server.Init( publisherEndPoint.c_str(), connectListenerEndPoint.c_str() );
 
+  float elapsed;
+  std::chrono::high_resolution_clock::time_point last;
+  last = std::chrono::high_resolution_clock::now();
+
   while ( 1 )
   {
-    server.Update();
+    last = server.Update( last );
     server.PrintToConsole();
   }
 

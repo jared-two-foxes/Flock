@@ -41,14 +41,14 @@
 
 int main( int argc, char* argv[] )
 {
-  CONSOLE_SCREEN_BUFFER_INFO initial_console_info, final_console_info;
-
   StopWatch frameTimer;
 
   // Prepare the console.
-  Console::Init();
-  Console::SetCursorVisible( false );
-  Console::GetScreenBufferInfo( &initial_console_info );
+  console_t console;
+  console = Create();
+  SetCursorVisible( console, false );
+  COORD cursorPos = GetCursorPosition( console );
+
 
   // Prepare our context and subscriber socket
   zmq::context_t context( 1 );
@@ -84,13 +84,11 @@ int main( int argc, char* argv[] )
     float frame_time = frameTimer.Stop();
 
     // Update display with stats.
-    Console::SetCursorPosition( initial_console_info.dwCursorPosition );
+    SetCursorPosition( console, cursorPos );
 
     std::cout << "--------------------------------------------------------" << std::endl;
     std::cout << "Frame Time: " << frame_time << std::endl;
     std::cout << "Entities: " << entities.size() << std::endl;
-
-    Console::GetScreenBufferInfo( &final_console_info );
   }
 
   return 0;
