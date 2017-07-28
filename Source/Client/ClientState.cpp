@@ -24,6 +24,7 @@
 
 using namespace Nebulae;
 
+static float fps = 0;
 
 KeyBinding bindings[][ 4 ] =
 {
@@ -41,87 +42,19 @@ KeyBinding bindings[][ 4 ] =
   }
 };
 
-volatile bool ready = false;
-
-
-
-
-void Thread()
-{
-  zmq::context_t context( 1 );
-  zmq::socket_t subscriber( context, ZMQ_SUB );
-  zmq::socket_t reply( context, ZMQ_REP );
-
-  try
-  {
-    reply.bind( "tcp://*:5558" );
-
-    subscriber.connect( "tcp://localhost:5556" );
-
-    // Setting subscription to all events. Argument is not currently supported, server doesnt push a identifier yet.
-    const char* filter = ""; //( argc > 1 ) ? argv[1] : "";
-    subscriber.setsockopt( ZMQ_SUBSCRIBE, filter, strlen( filter ) );
-
-    // Set the subscriber socket to only keep the most recent message, dont care about any other messages.
-    int conflate = 1;
-    subscriber.setsockopt( ZMQ_CONFLATE, &conflate, sizeof( conflate ) );
-  }
-  catch ( zmq::error_t& e )
-  {
-    std::cout << e.what();
-  }
-
-  zmq::message_t update;
-  ready = true;
-
-  while ( 1 )
-  {
-    try
-    {
-      // Check if there is a new server subscription message.
-      zmq::message_t next;
-      if ( subscriber.recv( &next, ZMQ_NOBLOCK ) )
-      {
-        // Only store this update if it has data.
-        if ( next.size() > 0 )
-        {
-          update = std::move( next );
-        }
-      }
-    }
-    catch ( zmq::error_t& e )
-    {
-      std::cout << e.what();
-    }
-
-    try
-    {
-      // Check if we were asked for an update.
-      zmq::message_t request;
-      if ( reply.recv( &request, ZMQ_NOBLOCK ) )
-      {
-        reply.send( update );
-      }
-    }
-    catch ( zmq::error_t& e )
-    {
-      std::cout << e.what();
-    }
-  }
-}
 
 
 ClientState::ClientState() :
   State( "Client" ),
   m_pCamera( NULL ),
   context( std::make_unique<zmq::context_t>( 1 ) ),
-  localSocket( std::make_unique<zmq::socket_t>( *context, ZMQ_REQ ) ),
+  subscriberSocket( std::make_unique<zmq::socket_t>( *context, ZMQ_SUB ) ),
   serverSocket( std::make_unique<zmq::socket_t>( *context, ZMQ_REQ ) ),
   m_lag( 0 )
 {
-  //AllocConsole();
-  //freopen( "CONOUT$", "w", stdout );
-  //freopen( "CONOUT$", "w", stderr );
+  m_console = Create();
+  freopen( "CONOUT$", "w", stdout );
+  freopen( "CONOUT$", "w", stderr );
 }
 
 
@@ -138,9 +71,6 @@ ClientState::~ClientState()
 void
 ClientState::Enter( Nebulae::StateStack* caller )
 {
-  m_fetch_thread = std::thread( Thread );
-  while ( !ready ); //Wait until we are ready to go.
-
   // Grab Application variables to help with setup.
   m_pRenderSystem = caller->GetRenderSystem();
 
@@ -254,7 +184,6 @@ ClientState::Render() const
     _last_frame_time = std::chrono::high_resolution_clock::now();
   static int _frame_count = 0;
   static float frame_delta = 0;
-  static float fps = 0;
 
   auto now = std::chrono::high_resolution_clock::now();
   frame_delta = std::chrono::duration<float, std::milli >( now - _last_frame_time ).count();
@@ -398,12 +327,21 @@ ClientState::SetupServerSocket()
 {
   try
   {
-    localSocket->connect( "tcp://localhost:5558" );
+    subscriberSocket->connect( "tcp://localhost:5556" );
+  
+    // Setting subscription to all events. Argument is not currently supported, server doesnt push an identifier yet.
+    const char* filter = ""; //( argc > 1 ) ? argv[1] : "";
+    subscriberSocket->setsockopt( ZMQ_SUBSCRIBE, filter, strlen( filter ) );
+  
+    // Set the subscriber socket to only keep the most recent message, dont care about any other messages.
+    int conflate = 1;
+    subscriberSocket->setsockopt( ZMQ_CONFLATE, &conflate, sizeof( conflate ) );
   }
   catch ( zmq::error_t e )
   {
     std::cout << e.what() << std::endl;
   }
+
 
   // Setup the socket connection to the server for user input.
   try
@@ -494,40 +432,45 @@ ClientState::ProcessClientMessage( const std::string& msg )
 
   if( list.size() > 1 )
   {
-    // Find the entity.
-    int id = atoi( list[ 1 ].c_str() );
-
-    // Process the directional information.
-    auto it = std::find_if( m_entities.begin(), m_entities.end(), [ & ]( entity_t& e ) { return ( e.identifier == id ); } );
-    if ( it != m_entities.end() )
+    for ( std::size_t i = 1, n = list.size(); i < n; )
     {
-      vector2_t d( 0, 0 );
-      if( list.size() > 2 )
+      // Find the entity.
+      int id = atoi( list[ i++ ].c_str() );
+
+      // Process the directional information.
+      auto it = std::find_if( m_entities.begin(), m_entities.end(), [ & ]( entity_t& e ) { return ( e.identifier == id ); } );
+      if ( it != m_entities.end() )
       {
-        if ( strstr( list[ 2 ].c_str(), "left" ) != nullptr )
+        vector2_t d( 0, 0 );
+        if( i < n )
         {
-          d.x -= 1.0f;
+          if ( strstr( list[ i ].c_str(), "left" ) != nullptr )
+          {
+            d.x -= 1.0f;
+          }
+          if ( strstr( list[ i ].c_str(), "right" ) != nullptr )
+          {
+            d.x += 1.0f;
+          }
+          if ( strstr( list[ i ].c_str(), "up" ) != nullptr )
+          {
+            d.y += 1.0f;
+          }
+          if ( strstr( list[ i ].c_str(), "down" ) != nullptr )
+          {
+            d.y -= 1.0f;
+          }
         }
-        if ( strstr( list[ 2 ].c_str(), "right" ) != nullptr )
+
+        if ( d.x > 0 || d.y > 0 )
         {
-          d.x += 1.0f;
+          d = Normalize( d );
         }
-        if ( strstr( list[ 2 ].c_str(), "up" ) != nullptr )
-        {
-          d.y += 1.0f;;
-        }
-        if ( strstr( list[ 2 ].c_str(), "down" ) != nullptr )
-        {
-          d.y -= 1.0f;
-        }
+
+        it->direction = d;
       }
 
-      if ( d.x > 0 || d.y > 0 )
-      {
-        d = Normalize( d );
-      }
-
-      it->direction = d;
+      i++;
     }
   }
 }
@@ -550,8 +493,13 @@ ClientState::TryCreatePlayers( int count )
     zmq::message_t reply;
     if ( serverSocket->recv( &reply ) ) //< blocking
     {
+      char replyBuffer[32];
+      memset( replyBuffer, 0, 32 );
+      memcpy( replyBuffer, reply.data(), reply.size() );
+      replyBuffer[reply.size()] = 0;
+
       // Check that the reply is a success code and extract the player identifiers.
-      std::string str( static_cast< char* >( reply.data() ) );
+      std::string str( replyBuffer );
       boost::char_separator<char> sep( " " );
       boost::tokenizer<boost::char_separator<char> > tokens( str, sep );
 
@@ -661,34 +609,18 @@ ClientState::TryServerUpdate()
   {
     zmq::message_t update;
 
-    // Request an update from the local listener socket.
-    if ( state == 0 )
+    // Check if there is a new server subscription message.
+    if ( subscriberSocket->recv( &update, ZMQ_NOBLOCK ) )
     {
-      zmq::message_t request( 1 );
-      if ( localSocket->send( request, ZMQ_NOBLOCK ) )
+      // Only store this update if it has data.
+      if ( update.size() > 0 )
       {
         state++;
       }
     }
 
-    // Receive the Server update.
-    if ( state == 1 )
-    {
-      if ( localSocket->recv( &update, ZMQ_NOBLOCK ) )
-      {
-        if ( update.size() > 0 )
-        {
-          state++;
-        }
-        else
-        {
-          state = 0; //< update received didnt contain any information, disregard and start again.
-        }
-      }
-    }
-
     // Process retrieved server data.
-    if ( state == 2 )
+    if ( state == 1 )
     {
       int list_size;
       long long timestamp;
@@ -716,6 +648,7 @@ ClientState::TryServerUpdate()
 
       // Reset the state so that we start the process over.
       state = 0;
+      PrintToConsole();
 
       return true;
     }
@@ -743,4 +676,21 @@ ClientState::SimulateStep( float fDeltaTimeStep )
   {
     e.position = e.position + e.direction * e.speed * fDeltaTimeStep;
   }
+}
+
+
+
+void
+ClientState::PrintToConsole() 
+{
+  // First clear the current contents.
+  Clear( m_console );
+
+  std::cout << "Client " << "-v 1.0.0" << std::endl;
+  std::cout << "--------------------------------------------------------" << std::endl;
+  //std::cout << "Uptime (s): " << duration<float >( high_resolution_clock::now() - _open ).count() << std::endl;
+  std::cout << "Frame Rate: " << std::to_string( fps ) << std::endl;
+  std::cout << "Lag (ms): " << std::to_string( m_lag ) << std::endl;
+  std::cout << "Entities: " << m_entities.size() << std::endl;
+  //std::cout << "Timestamp: " << _last.time_since_epoch().count() << std::endl;
 }

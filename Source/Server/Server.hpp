@@ -4,6 +4,7 @@
 #include <Server/GameController.hpp>
 
 #include <Common/Model/Model.hpp>
+#include <Common/Platform/Console.hpp>
 
 #include <zmq.hpp>
 
@@ -13,6 +14,11 @@
 class Server
 {
 public:
+  static std::chrono::milliseconds PUBLISH_FREQUENCY;
+
+public:
+  console_t console;
+
   std::unique_ptr<zmq::context_t > m_context;
   std::unique_ptr<zmq::socket_t >  m_publisher;
   std::unique_ptr<zmq::socket_t >  m_listener;
@@ -30,9 +36,10 @@ public:
 
   void Init( const char* publisherEndPoint, const char* listenerEndPoint );
   void PrintToConsole();
-  void Update();
 
-  void ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply );
+  std::chrono::high_resolution_clock::time_point Update( std::chrono::high_resolution_clock::time_point last );
+
+  std::string ProcessClientMessage( zmq::message_t& request );
 };
 
 #endif // _FLOCK_SERVER_HPP_

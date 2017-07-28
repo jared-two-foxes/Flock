@@ -19,6 +19,17 @@ const char* PUBLISHER_ENDPOINT = "tcp://*:5556";
 const char* REQUEST_ENDPOINT = "tcp://*:5555";
 
 
+int ExtractEntityId( std::string replyMsg )
+{
+  std::string response;
+  int identifier;
+
+  std::stringstream ss( replyMsg );
+  ss >> response >> identifier;
+
+  return identifier;
+}
+
 
 TEST( Server, Ctor_CreatesAndBindsPublisherSocket )
 {
@@ -61,7 +72,7 @@ TEST( Server, Update_BroadcastsState )
   // first making the connection, so discard these and advance to the point were we actually have a valid connection.
   zmq::message_t message;
   while( message.size() <= 0 ) {
-    server.Update();
+    server.Update( std::chrono::high_resolution_clock::now() - Server::PUBLISH_FREQUENCY );
     int rc = subscriber.Recv( &message );
     EXPECT_NE( rc, -1 );
   }
@@ -85,28 +96,10 @@ TEST( Server, Update_UpdatesGameController )
 
   EXPECT_CALL( controller, Update(_) );
   
-  server.Update();
+  server.Update( std::chrono::high_resolution_clock::now() - Server::PUBLISH_FREQUENCY );
 }
 
-TEST( Server, PlayerInput_Connect_CreatesPlayerEntity )
-{
-  entity_t e;
-  NiceMock<MockModel > model;
-  NiceMock<MockGameController > controller( &model );
-  Server server( &model, &controller );
-  server.Init( PUBLISHER_ENDPOINT, REQUEST_ENDPOINT );
-  FakeClient client( *server._context() );
-  client.connect( "tcp://localhost:5555" );
-
-  EXPECT_CALL( model, CreateEntity() )
-    .WillOnce( Return( &e ) );
-
-  client.pushClientMessage( server, "new" );
-
-  EXPECT_THAT( e.player, 1 );
-}
-
-TEST( Server, PlayerInput_Connect_RepliesWithIdentifier )
+TEST( Server, PlayerInput_Connect_RepliesWithClientIdentifier )
 {
   entity_t e;
   e.identifier = 1;
@@ -120,11 +113,47 @@ TEST( Server, PlayerInput_Connect_RepliesWithIdentifier )
   ON_CALL( model, CreateEntity() )
     .WillByDefault( Return( &e ) );
 
-  std::string reply = client.pushClientMessage( server, "new" );
+  std::string reply = client.pushClientMessage( server, "join" );
 
-  EXPECT_STREQ( reply.c_str(), "00001" );
+  EXPECT_STREQ( reply.c_str(), "00000" );
 }
 
+TEST( Server, PlayerInput_Create_RepliesWithCreatedPlayerIdentifier )
+{
+  entity_t e;
+  e.identifier = 1;
+  NiceMock<MockModel > model;
+  NiceMock<MockGameController > controller( &model );
+  Server server( &model, &controller );
+  server.Init( PUBLISHER_ENDPOINT, REQUEST_ENDPOINT );
+  FakeClient client( *server._context() );
+  client.connect( "tcp://localhost:5555" );
+
+  ON_CALL( model, CreateEntity() )
+    .WillByDefault( Return( &e ) );
+
+  std::string reply = client.pushClientMessage( server, "create 1" );
+
+  EXPECT_STREQ( reply.c_str(), "OK 1" );
+}
+
+TEST( Server, PlayerInput_Create_CreatesAPlayableEntity )
+{
+  entity_t e;
+  NiceMock<MockModel > model;
+  NiceMock<MockGameController > controller( &model );
+  Server server( &model, &controller );
+  server.Init( PUBLISHER_ENDPOINT, REQUEST_ENDPOINT );
+  FakeClient client( *server._context() );
+  client.connect( "tcp://localhost:5555" );
+
+  EXPECT_CALL( model, CreateEntity() )
+    .WillOnce( Return( &e ) );
+
+  client.pushClientMessage( server, "create 1" );
+
+  EXPECT_THAT( e.player, 1 );
+}
 
 TEST( Server, PlayerInput_Update_SetsPlayersDirection )
 {
@@ -135,11 +164,10 @@ TEST( Server, PlayerInput_Update_SetsPlayersDirection )
   FakeClient client( *server._context() );
   client.connect( "tcp://localhost:5555" );
 
-  std::string reply = client.pushClientMessage( server, "new" );
-  entity_t* e = model.Get( atoi( reply.c_str() ) );
+  std::string reply = client.pushClientMessage( server, "create 1" );
+  entity_t* e = model.Get( ExtractEntityId( reply ) );
   ASSERT_NE( e, nullptr );
-  vector2_t original = e->position;
-  client.pushClientMessage( server, std::to_string( e->identifier ) + " left" );
+  client.pushClientMessage( server, std::string("00000 " ) + std::to_string( e->identifier ) + " left" );
 
   EXPECT_EQ( e->direction, vector2_t( -1, 0 ) );
 }
@@ -154,26 +182,10 @@ TEST( Server, PlayerInput_Update_ValidArgsReturnsSuccess )
   client.connect( "tcp://localhost:5555" );
 
   std::string reply;
-  reply = client.pushClientMessage( server, "new" );
-  entity_t* e = model.Get( atoi( reply.c_str() ) );
+  reply = client.pushClientMessage( server, "create 1" );
+  entity_t* e = model.Get( ExtractEntityId( reply ) );
   ASSERT_NE( e, nullptr ); 
-  reply = client.pushClientMessage( server, std::to_string( e->identifier ) + " left" );
+  reply = client.pushClientMessage( server, std::string( "00000 " ) + std::to_string( e->identifier ) + " left" );
 
   EXPECT_STREQ( reply.c_str(), "OK" );
-}
-
-
-TEST( Server, PlayerInput_Update_InvalidArgsReturnsError )
-{
-  Model model;
-  NiceMock<MockGameController > controller( &model );
-  Server server( &model, &controller );
-  server.Init( PUBLISHER_ENDPOINT, REQUEST_ENDPOINT );
-  FakeClient client( *server._context() );
-  client.connect( "tcp://localhost:5555" );
-
-  std::string reply;
-  reply = client.pushClientMessage( server, "00001 left" );
-
-  EXPECT_STREQ( reply.c_str(), "INVALID_ID" );
 }

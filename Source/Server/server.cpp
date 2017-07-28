@@ -10,11 +10,11 @@
 
 using namespace std::chrono;
 
-std::chrono::high_resolution_clock::time_point _last, _open, _next;
+std::chrono::high_resolution_clock::time_point _last, _open;
 float _frame_time;
-CONSOLE_SCREEN_BUFFER_INFO _initial_console_info, _final_console_info;
 
-std::chrono::milliseconds PUBLISH_FREQUENCY = 1s;
+std::chrono::milliseconds Server::PUBLISH_FREQUENCY = ( 1000ms / 21 ); //< 21 ticks per second.
+
 
 Server::Server( Model* model, GameController* controller ) :
   m_context( std::make_unique<zmq::context_t >( 1 ) ),
@@ -26,18 +26,13 @@ Server::Server( Model* model, GameController* controller ) :
 
 
 Server::~Server()
-{
-  // This COMPLETELY fucks with unittest output!
-  //Console::SetCursorVisible( true );
-  //Console::SetCursorPosition( _final_console_info.dwCursorPosition );
-}
+{}
 
 void
 Server::Init( const char* publisherEndPoint, const char* listenerEndPoint )
 {
-  Console::Init();
-  Console::SetCursorVisible( false );
-  Console::GetScreenBufferInfo( &_initial_console_info );
+  console = Create();
+  SetCursorVisible( console, false );
 
   m_publisher->bind( publisherEndPoint );
   m_listener->bind( listenerEndPoint );
@@ -47,18 +42,19 @@ Server::Init( const char* publisherEndPoint, const char* listenerEndPoint )
   m_publisher->setsockopt( ZMQ_CONFLATE, &conflate, sizeof( conflate ) );
 
   _open = _last = high_resolution_clock::now();
-  _next = _open;
 }
 
 
 void
 Server::PrintToConsole()
 {
-  //// First clear the current contents.
-  Console::SetCursorPosition( _initial_console_info.dwCursorPosition );
+  // First clear the current contents
+  COORD tl = { 0, 0 };
+  SetCursorPosition( console, tl );
 
+  std::cout << "Server " << "-v 1.0.0" << std::endl; //maybe add in IP address or something?
   std::cout << "--------------------------------------------------------" << std::endl;
-  std::cout << "Frame Time  (ms): " << _frame_time * 1000.0f << std::endl;
+  std::cout << "Frame Time  (ms): " << _frame_time << std::endl;
   std::cout << "Uptime (s): " << duration<float >( high_resolution_clock::now() - _open ).count() << std::endl;
   std::cout << "Players: " << m_controller->GetPlayers().size(); // << std::endl;
   for ( auto i : m_controller->GetPlayers() )
@@ -70,35 +66,35 @@ Server::PrintToConsole()
   std::cout << std::endl;
   std::cout << "Entities: " << m_model->Entities().size() << std::endl;
   std::cout << "Timestamp: " << _last.time_since_epoch().count() << std::endl;
-
-  //Console::GetScreenBufferInfo( &_final_console_info );
 }
 
 
-void
-Server::Update()
+std::chrono::high_resolution_clock::time_point
+Server::Update( std::chrono::high_resolution_clock::time_point last )
 {
   // Determine elapsed time since last iteration.
-  auto now = high_resolution_clock::now();
-  duration<float > duration = ( now - _last );
-  _frame_time = duration.count();
+  auto now = std::chrono::high_resolution_clock::now();
+  auto duration = now - last;
+  _frame_time = std::chrono::duration<float, std::milli>( duration ).count();
 
   // Check for any Client messages.
   zmq::message_t request;
   if ( m_listener->recv( &request, ZMQ_NOBLOCK ) )
   {
-    zmq::message_t reply( 32 );
-    ProcessClientMessage( request, &reply );
+    std::string replyMsg = ProcessClientMessage( request );
 
+    zmq::message_t reply( replyMsg.size() );
+    memcpy( reply.data(), replyMsg.c_str(), replyMsg.size());
     m_listener->send( reply );
   }
 
-  // Update the game state.
-  m_controller->Update( _frame_time );
-
   // Push the current state out to all of the subscribers
-  if ( now >= _next )
+  while ( ( now - last ) >= PUBLISH_FREQUENCY )
   {
+    // Update the game state.
+    m_controller->Update( std::chrono::duration<float>( PUBLISH_FREQUENCY ).count() );
+
+    
     long long nanoseconds_since_epoch = now.time_since_epoch().count();
 
     std::size_t list_size = m_model->Entities().size();
@@ -109,14 +105,15 @@ Server::Update()
     memcpy( ptr + sizeof( long long ) + sizeof( int ), &m_model->Entities()[ 0 ], list_size * sizeof( entity_t ) );
     m_publisher->send( message, ZMQ_NOBLOCK );
 
-    _next += PUBLISH_FREQUENCY;
+    last += PUBLISH_FREQUENCY;
   }
 
-  _last = now;
+  _last = last;
+  return last;
 }
 
-void
-Server::ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply )
+std::string
+Server::ProcessClientMessage( zmq::message_t& request )
 {
   static int s_nextClientID = 0;
 
@@ -136,10 +133,14 @@ Server::ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply )
     tokenList.push_back( *it );
   }
 
+  // Respond with a client-id.
+  char replyBuffer[ 128 ];
+  memset( replyBuffer, 0, 128 );
+
   if ( tokenList[ 0 ] == "join" )
   {
-    // Respond with a client-id.
-    snprintf( ( char * ) reply->data(), 6, "%05d", s_nextClientID++ );
+    snprintf( ( char * ) replyBuffer, 6, "%05d", s_nextClientID++ );
+    replyBuffer[ 6 ] = 0;
   }
   else if ( tokenList[ 0 ] == "create" )
   {
@@ -163,7 +164,8 @@ Server::ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply )
         msg += " ";
         msg += std::to_string( id );
       }
-      memcpy( reply->data(), msg.c_str(), msg.length() );
+      memcpy( replyBuffer, msg.c_str(), msg.length() );
+      replyBuffer[msg.length()] = 0;
     }
     else
     {
@@ -177,43 +179,51 @@ Server::ProcessClientMessage( zmq::message_t& request, zmq::message_t* reply )
     // Extract the command & identifier.
     if( tokenList.size() > 1 )
     {
-      int identifier = atoi( tokenList[ 1 ].c_str() );
-
-      // Find the entity.
-      entity_t* e = m_model->Get( identifier );
-      if ( e )
+      for ( std::size_t i = 1, n = tokenList.size(); i < n; )
       {
-        vector2_t d( 0, 0 );
-        if( tokenList.size() > 2 )
+        int identifier = atoi( tokenList[ i++ ].c_str() );
+
+        // Find the entity.
+        entity_t* e = m_model->Get( identifier );
+        if ( e )
         {
-          if ( strstr( tokenList[ 2 ].c_str(), "left" ) != nullptr )
+          vector2_t d( 0, 0 );
+          if( i < n )
           {
-            d.x -= 1.0f;
+            if ( strstr( tokenList[ i ].c_str(), "left" ) != nullptr )
+            {
+              d.x -= 1.0f;
+            }
+            if ( strstr( tokenList[ i ].c_str(), "right" ) != nullptr )
+            {
+              d.x += 1.0f;
+            }
+            if ( strstr( tokenList[ i ].c_str(), "up" ) != nullptr )
+            {
+              d.y += 1.0f;
+            }
+            if ( strstr( tokenList[ i ].c_str(), "down" ) != nullptr )
+            {
+              d.y -= 1.0f;
+            }
           }
-          if ( strstr( tokenList[ 2 ].c_str(), "right" ) != nullptr )
+
+          if ( d.x > 0 || d.y > 0 )
           {
-            d.x += 1.0f;
+            d = Normalize( d );
           }
-          if ( strstr( tokenList[ 2 ].c_str(), "up" ) != nullptr )
-          {
-            d.y += 1.0f;
-          }
-          if ( strstr( tokenList[ 2 ].c_str(), "down" ) != nullptr )
-          {
-            d.y -= 1.0f;
-          }
+
+          e->direction = d;
         }
 
-        if ( d.x > 0 || d.y > 0 )
-        {
-          d = Normalize( d );
-        }
-
-        e->direction = d;
+        i++;
       }
     }
 
     // Send reply back to client
-    memcpy( ( char * ) reply->data(), "OK", 3 );
+    memcpy( replyBuffer, "OK", 3 );
+    replyBuffer[3] = 0;
   }
+
+  return replyBuffer;
 }

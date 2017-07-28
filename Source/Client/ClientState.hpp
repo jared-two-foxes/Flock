@@ -7,6 +7,8 @@
 #include <Nebulae/Beta/StateStack/State.h>
 #include <Nebulae/Common/Common.h>
 
+#include <Common/Platform/Console.hpp>
+
 #include <zmq.hpp>
 
 #include <thread>
@@ -30,12 +32,14 @@ private:
   RenderSystemPtr m_pRenderSystem; ///< The rendering system.
   CameraPtr       m_pCamera;       ///< The camera for scene.
 
+  console_t m_console;
+
   std::vector<entity_t > m_entities;
   std::vector<PlayerController* > m_players;  
 
   int m_clientId;
   std::unique_ptr<zmq::context_t > context;
-  std::unique_ptr<zmq::socket_t >  localSocket;
+  std::unique_ptr<zmq::socket_t >  subscriberSocket;
   std::unique_ptr<zmq::socket_t >  serverSocket;
   std::string m_lastCommand;
   std::thread m_fetch_thread; 
@@ -61,6 +65,8 @@ private:
   void TrySendClientUpdate();
   bool TryServerUpdate();
   void SimulateStep( float fDeltaTimeStep );
+
+  void PrintToConsole();
 
 }; //ClientState
 

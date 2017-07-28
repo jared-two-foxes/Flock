@@ -3,6 +3,7 @@
 
 #include <zmq.hpp>
 
+using namespace std::chrono;
 
 struct FakeClient
 {
@@ -33,10 +34,14 @@ public:
     while ( !_socket.recv( &reply, ZMQ_NOBLOCK ) )
     {
       // Let the Server catch it.
-      server.Update();
+      server.Update( std::chrono::high_resolution_clock::now() );
     }
 
-    return reply.data<char>();
+    char replyBuffer[128];
+    memcpy( replyBuffer, reply.data<char>(), reply.size() );
+    replyBuffer[reply.size()] = 0;
+
+    return replyBuffer;
   }
 
 };
