@@ -1,24 +1,23 @@
 Flock
 
 # Active {Server}
-  [] Entities shrink over time.
+  [] Implement a reset/restart command.
+  [] Restrict to 4 players at a time.
 
 # Active {Client}
-  [] Player needs to have a better representation to indicate facing
   
   
 # Backlog
 
 ## Server
-  [] Implement a reset/restart command.
-  [] Enemies run from players, 
-  [] Restrict to 4 players at a time.
-  [] If an enemy intersects with a player that enemy is consumed by the player.  Player score goes up.  Players radius increases.
-  [] Player dies when they run out of radius
-  [] Last surviving player wins.
+  [] Game Mode - 2
+    [] Enemies run from players, 
+    [] Entities shrink over time?
+    [] If an enemy intersects with a player that enemy is consumed by the player.  Player score goes up.  Players radius increases.
+    [] Player dies when they run out of radius
+    [] Last surviving player wins.
   
 ## Client
-  
   [] Change the background to something more appealing
   [] Implemented ThreadedSocket which continuously polls and stores the most current message that its recieved only and returns that via a recv function.
 
@@ -27,6 +26,9 @@ Flock
   
 
 # Complete
+
+## 31-07-2017
+  [Client] Player needs to have a better representation to indicate facing
 
 ## 20-07-2017
   [Client] Support multiple players on the same window?

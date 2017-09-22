@@ -5,6 +5,8 @@
 
 #include <chrono>
 
+struct Job;
+
 class GameController
 {
 public:
@@ -16,13 +18,15 @@ public:
   std::chrono::duration<float > m_secondsToNextSpawn;
   std::vector<int > m_players;
 
+  std::vector<Job* > m_jobs;
+
 public:
   GameController( Model* m_model );
 
   std::vector<int >& GetPlayers() { return m_players; }
  
+  void Init();
   virtual entity_t* AddPlayer();
-  virtual void PrepareEntity( entity_t& e, const rect_t& zone );
   virtual void Update( float epsilon );
 
 };
