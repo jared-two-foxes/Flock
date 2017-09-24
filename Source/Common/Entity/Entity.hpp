@@ -3,6 +3,12 @@
 
 #include <Common/Math/Math.hpp>
 
+enum EntityState
+{
+  ALIVE,
+  DEAD
+};
+
 struct entity_t
 {
 	int       identifier;
@@ -10,6 +16,7 @@ struct entity_t
   float     radius;
 	vector2_t position;
   vector2_t direction;
+  int       state;
   bool      player;
 };
 

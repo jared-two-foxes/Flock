@@ -15,7 +15,6 @@ public:
 public:
   Model* m_model;
   rect_t m_zone;
-  std::chrono::duration<float > m_secondsToNextSpawn;
   std::vector<int > m_players;
 
   std::vector<Job* > m_jobs;

@@ -12,6 +12,10 @@ using namespace std::chrono_literals;
 const std::chrono::duration<float > GameController::SPAWN_INTERVAL( 2s );
 
 
+// ----------------------------------------------------------------------
+// Free Functions
+// ----------------------------------------------------------------------
+
 entity_t* FindClosestEntity( Model* model, entity_t* e )
 {
   entity_t* t = nullptr;
@@ -33,6 +37,10 @@ entity_t* FindClosestEntity( Model* model, entity_t* e )
   return t;
 }
 
+
+// ----------------------------------------------------------------------
+// Update Jobs
+// ----------------------------------------------------------------------
 
 struct Job
 {
@@ -139,12 +147,14 @@ struct CombinationJob : public Job
 };
 
 
+// ----------------------------------------------------------------------
+// GameController
+// ----------------------------------------------------------------------
+
 GameController::GameController( Model* model ) :
   m_model( model ),
-  m_zone( vector2_t( -100.0f, -100.0f ), vector2_t( 100.0f, 100.0f ) ),
-  m_secondsToNextSpawn( SPAWN_INTERVAL )
+  m_zone( vector2_t( -100.0f, -100.0f ), vector2_t( 100.0f, 100.0f ) )
 {}
-
 
 void
 GameController::Init()
@@ -184,7 +194,6 @@ GameController::AddPlayer()
   return player;
 }
 
-
 void
 GameController::Update( float delta )
 {
@@ -193,14 +202,6 @@ GameController::Update( float delta )
     for ( Job* job : m_jobs )
     {
       ( *job )( m_model, delta );
-    }
-
-
-
-    // Move all the entities based upon their speed based upon their movement direction.
-    for ( auto& e : m_model->Entities() )
-    {
-      e.position = e.position + e.direction * e.speed * delta;
     }
   }
 }
